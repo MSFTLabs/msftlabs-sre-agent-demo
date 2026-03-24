@@ -1,0 +1,184 @@
+@model SreDemo.Web.Models.HealthProbeViewModel
+@{
+    ViewData["Title"] = "Health Probe";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>
+        <i class="bi bi-heart-pulse"></i> Health Probe
+        @if (Model.OverallHealthy)
+        {
+            <span class="badge bg-success ms-2">Healthy</span>
+        }
+        else
+        {
+            <span class="badge bg-danger ms-2">Unhealthy</span>
+        }
+    </h2>
+    <div>
+        <span class="text-muted me-3"><i class="bi bi-server"></i> @Model.ServerName</span>
+        <a asp-action="Probe" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+        </a>
+    </div>
+</div>
+
+<p class="text-muted mb-4">
+    Checked at <strong>@Model.CheckedAt.ToString("yyyy-MM-dd HH:mm:ss") UTC</strong>
+    &mdash; This page is used by the Application Gateway health probe to determine backend availability.
+</p>
+
+<div class="row">
+    @* Managed Identity / Key Vault *@
+    <div class="col-lg-4 mb-4">
+        <div class="card shadow h-100">
+            <div class="card-header @(Model.ManagedIdentityHealthy ? "bg-success" : "bg-danger") text-white d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-fingerprint me-1"></i> Managed Identity</span>
+                <span class="badge bg-light text-dark">
+                    @(Model.ManagedIdentityHealthy ? "PASS" : "FAIL")
+                </span>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tbody>
+                        <tr>
+                            <th style="width:40%">Test</th>
+                            <td>Key Vault secret read via <code>DefaultAzureCredential</code></td>
+                        </tr>
+                        <tr>
+                            <th>Status</th>
+                            <td>
+                                @if (Model.ManagedIdentityHealthy)
+                                {
+                                    <span class="text-success fw-bold"><i class="bi bi-check-circle-fill"></i> Connected</span>
+                                }
+                                else
+                                {
+                                    <span class="text-danger fw-bold"><i class="bi bi-x-circle-fill"></i> Failed</span>
+                                }
+                            </td>
+                        </tr>
+                        @if (!Model.ManagedIdentityHealthy && Model.ManagedIdentityError != null)
+                        {
+                            <tr>
+                                <th>Error</th>
+                                <td><small class="text-danger">@Model.ManagedIdentityError</small></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* SQL Connectivity *@
+    <div class="col-lg-4 mb-4">
+        <div class="card shadow h-100">
+            <div class="card-header @(Model.SqlHealthy ? "bg-success" : "bg-danger") text-white d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-database me-1"></i> SQL Database</span>
+                <span class="badge bg-light text-dark">
+                    @(Model.SqlHealthy ? "PASS" : "FAIL")
+                </span>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tbody>
+                        <tr>
+                            <th style="width:40%">Test</th>
+                            <td>EF Core query via Managed Identity (Entra / AAD)</td>
+                        </tr>
+                        <tr>
+                            <th>Status</th>
+                            <td>
+                                @if (Model.SqlHealthy)
+                                {
+                                    <span class="text-success fw-bold"><i class="bi bi-check-circle-fill"></i> Connected</span>
+                                }
+                                else
+                                {
+                                    <span class="text-danger fw-bold"><i class="bi bi-x-circle-fill"></i> Failed</span>
+                                }
+                            </td>
+                        </tr>
+                        @if (Model.SqlHealthy)
+                        {
+                            <tr>
+                                <th>Row Count</th>
+                                <td><span class="badge bg-info">@Model.SqlUserCount users</span></td>
+                            </tr>
+                        }
+                        @if (!Model.SqlHealthy && Model.SqlError != null)
+                        {
+                            <tr>
+                                <th>Error</th>
+                                <td><small class="text-danger">@Model.SqlError</small></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    @* Function App API *@
+    <div class="col-lg-4 mb-4">
+        <div class="card shadow h-100">
+            <div class="card-header @(Model.FunctionAppHealthy ? "bg-success" : "bg-danger") text-white d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-lightning-charge me-1"></i> Function App API</span>
+                <span class="badge bg-light text-dark">
+                    @(Model.FunctionAppHealthy ? "PASS" : "FAIL")
+                </span>
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tbody>
+                        <tr>
+                            <th style="width:40%">Test</th>
+                            <td>HTTP GET to <code>/api/health</code></td>
+                        </tr>
+                        <tr>
+                            <th>Endpoint</th>
+                            <td><small>@(Model.FunctionAppUrl ?? "Not configured")</small></td>
+                        </tr>
+                        <tr>
+                            <th>Status</th>
+                            <td>
+                                @if (Model.FunctionAppHealthy)
+                                {
+                                    <span class="text-success fw-bold"><i class="bi bi-check-circle-fill"></i> @Model.FunctionAppStatusCode OK</span>
+                                }
+                                else
+                                {
+                                    <span class="text-danger fw-bold"><i class="bi bi-x-circle-fill"></i> Failed</span>
+                                    @if (Model.FunctionAppStatusCode > 0)
+                                    {
+                                        <span class="ms-1">(HTTP @Model.FunctionAppStatusCode)</span>
+                                    }
+                                }
+                            </td>
+                        </tr>
+                        @if (!Model.FunctionAppHealthy && Model.FunctionAppError != null)
+                        {
+                            <tr>
+                                <th>Error</th>
+                                <td><small class="text-danger">@Model.FunctionAppError</small></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card shadow mt-2">
+    <div class="card-body">
+        <h6 class="card-title"><i class="bi bi-info-circle"></i> About This Page</h6>
+        <p class="mb-0 text-muted">
+            This health probe endpoint is polled by the <strong>Azure Application Gateway</strong> every 30 seconds.
+            If any check fails, the page returns <code>HTTP 503 Service Unavailable</code> and the gateway marks this backend as unhealthy.
+            When all checks pass, the page returns <code>HTTP 200 OK</code>.
+        </p>
+    </div>
+</div>

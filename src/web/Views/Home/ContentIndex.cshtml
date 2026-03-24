@@ -1,0 +1,32 @@
+@model IEnumerable<SreDemo.Web.Models.SitePage>
+@{
+    ViewData["Title"] = "Content";
+}
+
+<h2 class="mb-4">SRE Content Library</h2>
+<p class="text-muted">Reference materials covering site reliability engineering concepts, security practices, and chaos engineering techniques used in this demo environment.</p>
+
+@{
+    var grouped = Model.GroupBy(p => p.Category).OrderBy(g => g.Key);
+}
+
+@foreach (var group in grouped)
+{
+    <h4 class="mt-4 mb-3">@group.Key</h4>
+    <div class="row g-3">
+        @foreach (var item in group.OrderBy(p => p.SortOrder))
+        {
+            <div class="col-md-6">
+                <div class="card h-100 shadow-sm">
+                    <div class="card-body">
+                        <h5 class="card-title">@item.Title</h5>
+                        <p class="card-text text-muted">@item.Summary</p>
+                        <a asp-action="ContentPage" asp-route-slug="@item.Slug" class="btn btn-outline-primary btn-sm">
+                            Read More <i class="bi bi-arrow-right"></i>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}

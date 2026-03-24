@@ -1,0 +1,25 @@
+@model SreDemo.Web.Models.SitePage
+@{
+    ViewData["Title"] = Model.Title;
+}
+
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a asp-action="ContentIndex">Content</a></li>
+        <li class="breadcrumb-item"><span>@Model.Category</span></li>
+        <li class="breadcrumb-item active" aria-current="page">@Model.Title</li>
+    </ol>
+</nav>
+
+<article>
+    <h2>@Model.Title</h2>
+    <p class="text-muted">@Model.Summary</p>
+    <hr />
+    @Html.Raw(Model.Content)
+</article>
+
+<div class="mt-4">
+    <a asp-controller="Home" asp-action="ContentIndex" class="btn btn-outline-secondary">
+        <i class="bi bi-arrow-left me-1"></i>Back to Content
+    </a>
+</div>

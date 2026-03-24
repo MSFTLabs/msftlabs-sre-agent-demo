@@ -1,0 +1,19 @@
+name: sre-agent-demo
+metadata:
+  template: msftlabs-sre-agent-demo
+hooks:
+  postprovision:
+    shell: pwsh
+    run: scripts/postprovision.ps1
+  postup:
+    shell: pwsh
+    run: scripts/postup.ps1
+services:
+  web:
+    project: ./src/web
+    host: appservice
+    language: dotnet
+  api:
+    project: ./src/api
+    host: function
+    language: python

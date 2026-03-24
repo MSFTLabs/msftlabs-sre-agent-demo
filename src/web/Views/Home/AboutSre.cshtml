@@ -1,0 +1,87 @@
+@{
+    ViewData["Title"] = "About SRE";
+}
+
+<h2 class="mb-4">About Site Reliability Engineering</h2>
+
+<div class="row">
+    <div class="col-lg-8">
+        <p class="lead">Site Reliability Engineering (SRE) is a discipline that applies software engineering practices to infrastructure and operations problems. Originally developed at Google, SRE has become the industry standard for building and operating reliable, scalable production systems.</p>
+
+        <h4 class="mt-4">What is Azure SRE Agent?</h4>
+        <p>Azure SRE Agent is an AI-powered assistant that helps platform engineering and SRE teams detect, diagnose, and resolve production incidents faster. It continuously monitors telemetry from Azure Monitor, Application Insights, and Log Analytics to identify anomalies and correlate signals across the full application stack.</p>
+
+        <h4 class="mt-4">Core SRE Principles</h4>
+        <ul>
+            <li><strong>Embracing Risk</strong> -- Balancing reliability investment against feature velocity using error budgets</li>
+            <li><strong>Service Level Objectives</strong> -- Defining quantitative reliability targets that align engineering and business goals</li>
+            <li><strong>Eliminating Toil</strong> -- Automating repetitive operational work to focus on engineering improvements</li>
+            <li><strong>Monitoring and Observability</strong> -- Building comprehensive visibility into system behavior through metrics, logs, and traces</li>
+            <li><strong>Release Engineering</strong> -- Making deployments reliable, predictable, and reversible</li>
+            <li><strong>Simplicity</strong> -- Managing system complexity to prevent fragility and reduce incident surface area</li>
+        </ul>
+
+        <h4 class="mt-4">This Demo Environment</h4>
+        <p>This application provides a safe environment to validate SRE Agent capabilities against controlled failure modes. The infrastructure includes:</p>
+        <ul>
+            <li>ASP.NET Core web application with Application Insights telemetry</li>
+            <li>Azure SQL Database with Entra ID (managed identity) authentication</li>
+            <li>Azure Key Vault for secret management with managed identity access</li>
+            <li>Application Gateway with WAF v2 (OWASP 3.2 rule set)</li>
+            <li>Azure Functions chaos API for fault injection</li>
+            <li>Log Analytics workspace for centralized diagnostics</li>
+        </ul>
+
+        <h4 class="mt-4">Learn More</h4>
+        <div class="list-group">
+            <a href="https://learn.microsoft.com/en-us/azure/site-reliability-engineering/" class="list-group-item list-group-item-action" target="_blank" rel="noopener noreferrer">
+                <strong>Azure SRE Documentation</strong> -- Microsoft Learn overview of SRE principles and practices on Azure
+            </a>
+            <a href="https://learn.microsoft.com/en-us/azure/azure-monitor/overview" class="list-group-item list-group-item-action" target="_blank" rel="noopener noreferrer">
+                <strong>Azure Monitor Overview</strong> -- Comprehensive monitoring for applications and infrastructure
+            </a>
+            <a href="https://learn.microsoft.com/en-us/azure/azure-monitor/app/app-insights-overview" class="list-group-item list-group-item-action" target="_blank" rel="noopener noreferrer">
+                <strong>Application Insights</strong> -- Application performance management and diagnostics
+            </a>
+            <a href="https://learn.microsoft.com/en-us/azure/key-vault/general/overview" class="list-group-item list-group-item-action" target="_blank" rel="noopener noreferrer">
+                <strong>Azure Key Vault</strong> -- Safeguard cryptographic keys and secrets
+            </a>
+            <a href="https://learn.microsoft.com/en-us/azure/web-application-firewall/ag/ag-overview" class="list-group-item list-group-item-action" target="_blank" rel="noopener noreferrer">
+                <strong>Web Application Firewall on Application Gateway</strong> -- Protect web applications from common exploits
+            </a>
+            <a href="https://learn.microsoft.com/en-us/azure/chaos-studio/chaos-studio-overview" class="list-group-item list-group-item-action" target="_blank" rel="noopener noreferrer">
+                <strong>Azure Chaos Studio</strong> -- Improve application resilience through chaos engineering
+            </a>
+        </div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="card-title">SRE Video Overview</h5>
+                <div class="ratio ratio-16x9">
+                    <iframe src="https://www.youtube.com/embed/6vDrThUjDOc"
+                            title="Azure SRE Agent"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowfullscreen></iframe>
+                </div>
+            </div>
+        </div>
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">Key Concepts</h5>
+                <dl>
+                    <dt>SLI</dt>
+                    <dd>Service Level Indicator -- a quantitative measure of service quality</dd>
+                    <dt>SLO</dt>
+                    <dd>Service Level Objective -- a target value for an SLI</dd>
+                    <dt>Error Budget</dt>
+                    <dd>The acceptable amount of unreliability within a measurement window</dd>
+                    <dt>Toil</dt>
+                    <dd>Repetitive, automatable operational work that scales linearly with service size</dd>
+                    <dt>MTTI / MTTR</dt>
+                    <dd>Mean Time to Identify / Mean Time to Resolve</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>

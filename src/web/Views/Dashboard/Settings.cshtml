@@ -1,0 +1,48 @@
+@{
+    ViewData["Title"] = "Settings";
+}
+
+<h2><i class="bi bi-gear"></i> Settings</h2>
+
+<div class="row mt-4">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header">Application Settings</div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> Application settings are managed via Azure Key Vault and App Service configuration.
+                </div>
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Setting</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Application Insights</td>
+                            <td><span class="badge bg-success">Enabled</span></td>
+                        </tr>
+                        <tr>
+                            <td>Session Cookies</td>
+                            <td><span class="badge bg-success">Enabled</span></td>
+                        </tr>
+                        <tr>
+                            <td>Key Vault Integration</td>
+                            <td><span class="badge bg-success">Enabled</span></td>
+                        </tr>
+                        <tr>
+                            <td>SQL Database</td>
+                            <td><span class="badge bg-success">Connected</span></td>
+                        </tr>
+                        <tr>
+                            <td>HTTPS Only</td>
+                            <td><span class="badge bg-success">Enforced</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

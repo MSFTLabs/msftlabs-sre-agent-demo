@@ -1,0 +1,15 @@
+{
+  "operationalInsightsWorkspaces": "log-",
+  "insightsComponents": "appi-",
+  "sqlServers": "sql-",
+  "sqlServersDatabases": "sqldb-",
+  "keyVaultVaults": "kv-",
+  "webServerFarms": "plan-",
+  "webSitesAppService": "app-",
+  "webSitesFunctions": "func-",
+  "storageStorageAccounts": "st",
+  "networkVirtualNetworks": "vnet-",
+  "networkPublicIPAddresses": "pip-",
+  "networkApplicationGateways": "agw-",
+  "networkApplicationGatewayWebApplicationFirewallPolicies": "waf-"
+}
