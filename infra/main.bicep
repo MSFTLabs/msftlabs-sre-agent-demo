@@ -6,12 +6,6 @@ param environmentName string
 @description('Primary location for all resources')
 param location string
 
-@description('Object ID of the deploying user (auto-detected by preprovision hook)')
-param sqlAadAdminObjectId string
-
-@description('UPN of the deploying user (auto-detected by preprovision hook)')
-param sqlAadAdminLogin string
-
 var abbrs = loadJsonContent('./abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var tags = { 'azd-env-name': environmentName }
@@ -34,7 +28,7 @@ module monitoring 'modules/monitoring.bicep' = {
   }
 }
 
-// SQL Server + Database (Azure AD only auth per MCAPS policy)
+// SQL Server + Database (Entra admin configured by postprovision hook)
 module sql 'modules/sql.bicep' = {
   scope: resourceGroup
   params: {
@@ -42,8 +36,6 @@ module sql 'modules/sql.bicep' = {
     tags: tags
     sqlServerName: '${abbrs.sqlServers}${resourceToken}'
     sqlDatabaseName: 'sredemodb'
-    aadAdminObjectId: sqlAadAdminObjectId
-    aadAdminLogin: sqlAadAdminLogin
   }
 }
 
@@ -128,15 +120,6 @@ module funcKvAccess 'modules/keyvault-access.bicep' = {
   }
 }
 
-// Key Vault RBAC: grant deploying user Secrets Officer (for postprovision password generation)
-module deployerKvOfficer 'modules/keyvault-officer.bicep' = {
-  scope: resourceGroup
-  params: {
-    keyVaultName: keyVault.outputs.keyVaultName
-    principalId: sqlAadAdminObjectId
-  }
-}
-
 // SQL RBAC: grant Web App managed identity db access
 module webSqlAccess 'modules/sql-access.bicep' = {
   scope: resourceGroup
@@ -151,14 +134,6 @@ module funcMgmtRbac 'modules/funcapp-management-rbac.bicep' = {
   scope: resourceGroup
   params: {
     principalId: functionApp.outputs.functionAppPrincipalId
-  }
-}
-
-// Owner on RG for deployer (required for SRE Agent portal to list the resource group)
-module deployerRgOwner 'modules/deployer-rg-owner.bicep' = {
-  scope: resourceGroup
-  params: {
-    principalId: sqlAadAdminObjectId
   }
 }
 
@@ -188,6 +163,7 @@ module diagnostics 'modules/diagnostics.bicep' = {
   }
 }
 
+output AZURE_RESOURCE_GROUP string = resourceGroup.name
 output AZURE_WEBAPP_NAME string = appService.outputs.webAppName
 output AZURE_WEBAPP_URL string = appService.outputs.webAppUrl
 output AZURE_FUNCTION_APP_NAME string = functionApp.outputs.functionAppName

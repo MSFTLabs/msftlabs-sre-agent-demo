@@ -4,18 +4,16 @@ Self-contained lab environment for demonstrating Azure SRE Agent capabilities. O
 
 ![1774382927084](image/README/1774382927084.png)
 
-
 ## Architecture
 
-| Resource | Purpose |
-|---|---|
-| **App Service (Linux/.NET 8)** | Multi-page web app with login, dashboard, admin panel, SQL injection trigger |
-| **Application Gateway (WAF_v2)** | OWASP 3.2 Prevention mode — blocks SQL injection attacks |
-| **Azure SQL Database** | User credential storage, session-backed authentication |
-| **Application Insights** | Telemetry, performance monitoring, error tracking |
-| **Log Analytics Workspace** | Centralized log collection, WAF firewall logs |
-| **Function App (Python)** | Additional chaos engineering API endpoints |
-| **Key Vault** | Stores SQL connection string and secrets (RBAC-secured) |
+| Resource                               | Purpose                                                                      |
+| -------------------------------------- | ---------------------------------------------------------------------------- |
+| **App Service (Linux/.NET 8)**   | Multi-page web app with login, dashboard, admin panel, SQL injection trigger |
+| **Application Gateway (WAF_v2)** | OWASP 3.2 Prevention mode — blocks SQL injection attacks                    |
+| **Azure SQL Database**           | User credential storage, session-backed authentication                       |
+| **Application Insights**         | Telemetry, performance monitoring, error tracking                            |
+| **Log Analytics Workspace**      | Centralized log collection, WAF firewall log                                 |
+| **Key Vault**                    | Stores SQL connection string and secrets (RBAC-secured)                      |
 
 ## Demo Scenario
 
@@ -128,7 +126,7 @@ azd config set defaults.location "eastus2"                 # Set default locatio
 
 ---
 
-### Quick Deploy (copy-paste)
+### Quick Deploy 
 
 ```powershell
 git clone https://github.com/MSFTLabs/msftlabs-sre-agent-demo.git
@@ -145,24 +143,6 @@ azd up
 The `preprovision` hook auto-detects your identity for SQL Entra admin. The `postprovision` hook seeds the SQL database, grants the web app managed identity `db_owner`, and stores demo user passwords in Key Vault. The `postup` hook prints the web app URL and admin credentials.
 
 ---
-
-### Configure SRE Agent
-
-1. Go to [https://sre.azure.com](https://sre.azure.com) and create an agent
-2. Add `rg-sre-demo` as a managed resource group
-3. Upload `knowledgeFiles/application-architecture.md` as a knowledge file
-4. Create a subagent (e.g., `sre-investigator`)
-5. Create an incident response plan → connect it to the subagent
-
-### Run the Demo
-
-1. Log into the web app as admin
-2. Go to the **Admin** page
-3. Click **"Trigger SQL Injection Attack"**
-4. Wait ~2 minutes for the WAF alert to fire
-5. Watch SRE Agent investigate the incident
-
-See [GUIDE.md](GUIDE.md) for the full walkthrough.
 
 ## Project Structure
 

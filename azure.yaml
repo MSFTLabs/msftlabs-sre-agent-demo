@@ -2,9 +2,6 @@ name: sre-agent-demo
 metadata:
   template: msftlabs-sre-agent-demo
 hooks:
-  preprovision:
-    shell: pwsh
-    run: scripts/preprovision.ps1
   postprovision:
     shell: pwsh
     run: scripts/postprovision.ps1

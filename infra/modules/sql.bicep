@@ -10,12 +10,6 @@ param sqlServerName string
 @description('Name of the SQL Database')
 param sqlDatabaseName string
 
-@description('Azure AD admin object ID for SQL Server')
-param aadAdminObjectId string
-
-@description('Azure AD admin login name')
-param aadAdminLogin string
-
 resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
   name: sqlServerName
   location: location
@@ -24,14 +18,6 @@ resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
     version: '12.0'
     minimalTlsVersion: '1.2'
     publicNetworkAccess: 'Enabled'
-    administrators: {
-      administratorType: 'ActiveDirectory'
-      principalType: 'User'
-      login: aadAdminLogin
-      sid: aadAdminObjectId
-      tenantId: subscription().tenantId
-      azureADOnlyAuthentication: true
-    }
   }
 }
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# postprovision.ps1 - Configures SQL access, seeds data, and stores secrets
+# postprovision.ps1 - Configures deployer identity, SQL Entra admin, seeds data
 # Runs automatically after 'azd provision'
 
 $ErrorActionPreference = 'Stop'
@@ -19,21 +19,42 @@ if (-not $webAppName)    { Write-Error "AZURE_WEBAPP_NAME not set."; exit 1 }
 $sqlFqdn = "${sqlServerName}.database.windows.net"
 
 # ============================================================
-# 1) Detect deployer identity and public IP, add firewall rule
+# 1) Detect deployer identity, set SQL Entra admin, add firewall rule
 # ============================================================
 Write-Host ""
-Write-Host "=== Step 1: Configuring deployer access ===" -ForegroundColor Cyan
+Write-Host "=== Step 1: Configuring deployer identity and SQL Entra admin ===" -ForegroundColor Cyan
 
 # Detect deployer identity
-$deployerObjectId = $env:AZURE_PRINCIPAL_ID
-$deployerLogin    = $env:AZURE_AAD_ADMIN_LOGIN
+$deployerObjectId = az ad signed-in-user show --query id -o tsv 2>$null
+$deployerLogin    = az ad signed-in-user show --query userPrincipalName -o tsv 2>$null
 if (-not $deployerObjectId -or -not $deployerLogin) {
-    Write-Host "  Detecting signed-in user identity..."
-    $deployerObjectId = az ad signed-in-user show --query id -o tsv 2>$null
-    $deployerLogin    = az ad signed-in-user show --query userPrincipalName -o tsv 2>$null
+    Write-Error "Could not detect signed-in user. Run 'az login' first."
+    exit 1
 }
-if (-not $deployerObjectId) { Write-Error "Could not detect deployer identity. Run 'az login' first."; exit 1 }
 Write-Host "  Deployer:  $deployerLogin ($deployerObjectId)" -ForegroundColor White
+
+# Set SQL Entra admin (Entra-only auth, no local SQL admin per MCAPS policy)
+Write-Host "  Setting SQL Entra admin..."
+az sql server ad-admin create --resource-group $rgName --server-name $sqlServerName `
+    --display-name $deployerLogin --object-id $deployerObjectId -o none
+az sql server ad-only-auth enable --resource-group $rgName --server-name $sqlServerName -o none
+Write-Host "  [done] SQL Entra-only admin set: $deployerLogin" -ForegroundColor Green
+
+# Assign deployer Key Vault Secrets Officer (needed to store passwords in Step 3)
+Write-Host "  Assigning Key Vault Secrets Officer to deployer..."
+$kvId = az keyvault show --name $kvName --query id -o tsv 2>$null
+az role assignment create --role "Key Vault Secrets Officer" `
+    --assignee-object-id $deployerObjectId --assignee-principal-type User `
+    --scope $kvId -o none 2>$null
+Write-Host "  [done] Key Vault Secrets Officer assigned" -ForegroundColor Green
+
+# Assign deployer Owner on RG (for SRE Agent portal to list the resource group)
+Write-Host "  Assigning Owner role on resource group..."
+$rgId = az group show --name $rgName --query id -o tsv 2>$null
+az role assignment create --role "Owner" `
+    --assignee-object-id $deployerObjectId --assignee-principal-type User `
+    --scope $rgId -o none 2>$null
+Write-Host "  [done] Owner role assigned on $rgName" -ForegroundColor Green
 
 # Detect public IP and add temporary firewall rule
 $myIp = $null
@@ -47,14 +68,19 @@ if ($myIp) {
     Write-Host "  Public IP: $myIp"
     az sql server firewall-rule create --resource-group $rgName --server $sqlServerName `
         --name postprovision-deployer --start-ip-address $myIp --end-ip-address $myIp -o none 2>$null
-    Write-Host "  [done] Firewall rule added for deployer IP" -ForegroundColor Green
+    Write-Host "  [done] SQL firewall rule added for deployer IP" -ForegroundColor Green
 } else {
     Write-Warning "  Could not detect public IP. SQL operations may fail if your IP is not allowed."
 }
 
 # ============================================================
-# 2) Generate random passwords for demo users → Key Vault
+# 2) Wait for RBAC propagation
 # ============================================================
+Write-Host ""
+Write-Host "=== Step 2: Waiting for role assignments to propagate ===" -ForegroundColor Cyan
+Write-Host "  Waiting 30 seconds for RBAC propagation..."
+Start-Sleep -Seconds 30
+Write-Host "  [done]" -ForegroundColor Green
 $usernames = @('admin', 'jmorales', 'akovacs', 'schen', 'bmurphy', 'pnakamura', 'dwilliams', 'lpetrova', 'rsingh', 'efischer', 'okim')
 
 function New-RandomPassword {
@@ -76,7 +102,7 @@ function New-RandomPassword {
 }
 
 Write-Host ""
-Write-Host "=== Step 2: Storing demo user passwords in Key Vault: $kvName ===" -ForegroundColor Cyan
+Write-Host "=== Step 3: Storing demo user passwords in Key Vault: $kvName ===" -ForegroundColor Cyan
 Write-Host ""
 
 foreach ($username in $usernames) {
@@ -97,10 +123,10 @@ foreach ($username in $usernames) {
 }
 
 # ============================================================
-# 3) Grant Web App managed identity SQL access (db_owner)
+# 4) Grant Web App managed identity SQL access (db_owner)
 # ============================================================
 Write-Host ""
-Write-Host "=== Step 3: Granting Web App managed identity SQL access ===" -ForegroundColor Cyan
+Write-Host "=== Step 4: Granting Web App managed identity SQL access ===" -ForegroundColor Cyan
 
 $token = az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv 2>$null
 if (-not $token) {
@@ -130,10 +156,10 @@ END
 }
 
 # ============================================================
-# 4) Create schema and seed data via .NET seed tool
+# 5) Create schema and seed data via .NET seed tool
 # ============================================================
 Write-Host ""
-Write-Host "=== Step 4: Creating schema and seeding database ===" -ForegroundColor Cyan
+Write-Host "=== Step 5: Creating schema and seeding database ===" -ForegroundColor Cyan
 
 # Refresh token (may have expired during steps above)
 $token = az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv 2>$null
@@ -150,10 +176,10 @@ try {
 }
 
 # ============================================================
-# 5) Clean up temp firewall rule
+# 6) Clean up temp firewall rule
 # ============================================================
 Write-Host ""
-Write-Host "=== Step 5: Cleaning up deployer firewall rule ===" -ForegroundColor Cyan
+Write-Host "=== Step 6: Cleaning up deployer firewall rule ===" -ForegroundColor Cyan
 az sql server firewall-rule delete --resource-group $rgName --server $sqlServerName `
     --name postprovision-deployer -o none 2>$null
 Write-Host "  [done] Firewall rule removed" -ForegroundColor Green
