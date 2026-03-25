@@ -7,6 +7,12 @@
     },
     "location": {
       "value": "${AZURE_LOCATION}"
+    },
+    "sqlAadAdminObjectId": {
+      "value": "${AZURE_PRINCIPAL_ID}"
+    },
+    "sqlAadAdminLogin": {
+      "value": "${AZURE_AAD_ADMIN_LOGIN}"
     }
   }
 }

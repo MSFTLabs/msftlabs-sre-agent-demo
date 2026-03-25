@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# postprovision.ps1 - Provisions database schema, seeds data, and configures access
+# postprovision.ps1 - Configures SQL access, seeds data, and stores secrets
 # Runs automatically after 'azd provision'
 
 $ErrorActionPreference = 'Stop'
@@ -8,6 +8,8 @@ $kvName        = $env:AZURE_KEY_VAULT_NAME
 $sqlServerName = $env:AZURE_SQL_SERVER_NAME
 $sqlDbName     = $env:AZURE_SQL_DATABASE_NAME
 $webAppName    = $env:AZURE_WEBAPP_NAME
+$rgName        = $env:AZURE_RESOURCE_GROUP
+if (-not $rgName) { $rgName = "rg-$($env:AZURE_ENV_NAME)" }
 
 if (-not $kvName)        { Write-Error "AZURE_KEY_VAULT_NAME not set."; exit 1 }
 if (-not $sqlServerName) { Write-Error "AZURE_SQL_SERVER_NAME not set."; exit 1 }
@@ -17,7 +19,41 @@ if (-not $webAppName)    { Write-Error "AZURE_WEBAPP_NAME not set."; exit 1 }
 $sqlFqdn = "${sqlServerName}.database.windows.net"
 
 # ============================================================
-# 1) Generate random passwords for demo users → Key Vault
+# 1) Detect deployer identity and public IP, add firewall rule
+# ============================================================
+Write-Host ""
+Write-Host "=== Step 1: Configuring deployer access ===" -ForegroundColor Cyan
+
+# Detect deployer identity
+$deployerObjectId = $env:AZURE_PRINCIPAL_ID
+$deployerLogin    = $env:AZURE_AAD_ADMIN_LOGIN
+if (-not $deployerObjectId -or -not $deployerLogin) {
+    Write-Host "  Detecting signed-in user identity..."
+    $deployerObjectId = az ad signed-in-user show --query id -o tsv 2>$null
+    $deployerLogin    = az ad signed-in-user show --query userPrincipalName -o tsv 2>$null
+}
+if (-not $deployerObjectId) { Write-Error "Could not detect deployer identity. Run 'az login' first."; exit 1 }
+Write-Host "  Deployer:  $deployerLogin ($deployerObjectId)" -ForegroundColor White
+
+# Detect public IP and add temporary firewall rule
+$myIp = $null
+try {
+    $myIp = (Invoke-RestMethod -Uri "https://api.ipify.org" -TimeoutSec 10).Trim()
+} catch {
+    try { $myIp = (Invoke-RestMethod -Uri "https://ifconfig.me/ip" -TimeoutSec 10).Trim() } catch { }
+}
+
+if ($myIp) {
+    Write-Host "  Public IP: $myIp"
+    az sql server firewall-rule create --resource-group $rgName --server $sqlServerName `
+        --name postprovision-deployer --start-ip-address $myIp --end-ip-address $myIp -o none 2>$null
+    Write-Host "  [done] Firewall rule added for deployer IP" -ForegroundColor Green
+} else {
+    Write-Warning "  Could not detect public IP. SQL operations may fail if your IP is not allowed."
+}
+
+# ============================================================
+# 2) Generate random passwords for demo users → Key Vault
 # ============================================================
 $usernames = @('admin', 'jmorales', 'akovacs', 'schen', 'bmurphy', 'pnakamura', 'dwilliams', 'lpetrova', 'rsingh', 'efischer', 'okim')
 
@@ -40,7 +76,7 @@ function New-RandomPassword {
 }
 
 Write-Host ""
-Write-Host "=== Step 1: Storing demo user passwords in Key Vault: $kvName ===" -ForegroundColor Cyan
+Write-Host "=== Step 2: Storing demo user passwords in Key Vault: $kvName ===" -ForegroundColor Cyan
 Write-Host ""
 
 foreach ($username in $usernames) {
@@ -61,29 +97,7 @@ foreach ($username in $usernames) {
 }
 
 # ============================================================
-# 2) Add temp firewall rule for deployer IP
-# ============================================================
-Write-Host ""
-Write-Host "=== Step 2: Configuring SQL firewall for deployer ===" -ForegroundColor Cyan
-
-# Detect current public IP
-$myIp = (az rest --method get --url "https://api.ipify.org" -o tsv 2>$null)
-if (-not $myIp) {
-    # Fallback: try to connect and parse from error
-    Write-Warning "Could not detect public IP. Attempting to add AllowAllAzure rule."
-    $rgName = $env:AZURE_RESOURCE_GROUP ?? "rg-$($env:AZURE_ENV_NAME)"
-    az sql server firewall-rule create --resource-group $rgName --server $sqlServerName `
-        --name AllowAzureServices --start-ip-address 0.0.0.0 --end-ip-address 0.0.0.0 -o none 2>$null
-} else {
-    Write-Host "  Deployer IP: $myIp"
-    $rgName = $env:AZURE_RESOURCE_GROUP ?? "rg-$($env:AZURE_ENV_NAME)"
-    az sql server firewall-rule create --resource-group $rgName --server $sqlServerName `
-        --name postprovision-deployer --start-ip-address $myIp --end-ip-address $myIp -o none 2>$null
-    Write-Host "  [done] Firewall rule added" -ForegroundColor Green
-}
-
-# ============================================================
-# 3) Grant Web App managed identity SQL access
+# 3) Grant Web App managed identity SQL access (db_owner)
 # ============================================================
 Write-Host ""
 Write-Host "=== Step 3: Granting Web App managed identity SQL access ===" -ForegroundColor Cyan
@@ -140,7 +154,6 @@ try {
 # ============================================================
 Write-Host ""
 Write-Host "=== Step 5: Cleaning up deployer firewall rule ===" -ForegroundColor Cyan
-$rgName = $env:AZURE_RESOURCE_GROUP ?? "rg-$($env:AZURE_ENV_NAME)"
 az sql server firewall-rule delete --resource-group $rgName --server $sqlServerName `
     --name postprovision-deployer -o none 2>$null
 Write-Host "  [done] Firewall rule removed" -ForegroundColor Green
