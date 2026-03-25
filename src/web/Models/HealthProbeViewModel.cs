@@ -15,9 +15,4 @@ public class HealthProbeViewModel
     public int SqlUserCount { get; set; }
     public string? SqlError { get; set; }
 
-    // Function App API
-    public bool FunctionAppHealthy { get; set; }
-    public int FunctionAppStatusCode { get; set; }
-    public string? FunctionAppUrl { get; set; }
-    public string? FunctionAppError { get; set; }
 }

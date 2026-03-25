@@ -30,7 +30,6 @@ The demo uses a single, clear incident flow:
 - [Azure Developer CLI (azd)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
 - [Azure CLI](https://docs.microsoft.com/cli/azure/install-azure-cli)
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
-- [Python 3.11](https://www.python.org/downloads/)
 
 ## Getting Started
 
@@ -63,12 +62,36 @@ azd init
 #### Configure environment variables
 
 ```powershell
-# Required: Pin subscription from your current az CLI context and set region
+# Required: Pin subscription, region, and deployer identity
 azd env set AZURE_SUBSCRIPTION_ID "$(az account show --query id -o tsv)"
 azd env set AZURE_LOCATION "eastus2"
+azd env set AZURE_PRINCIPAL_ID "$(az ad signed-in-user show --query id -o tsv)"
+azd env set AZURE_AAD_ADMIN_LOGIN "$(az ad signed-in-user show --query userPrincipalName -o tsv)"
 ```
 
-> **Note:** SQL Entra admin identity is auto-detected from your `az login` session by the postprovision hook — no manual setup needed.
+> **Note:** MCAPS policy requires SQL Entra-only auth at server creation. The identity env vars are passed to Bicep for the SQL admin configuration. Bicep cannot look up the deploying user's identity, so these must be set before `azd up`.
+>
+>> Yet another reason I prefer Terraform ...
+>>
+
+### Quick Deploy
+
+```powershell
+git clone https://github.com/MSFTLabs/msftlabs-sre-agent-demo.git
+cd msftlabs-sre-agent-demo
+
+az login
+azd auth login --tenant-id "$(az account show --query tenantId -o tsv)"
+
+azd init
+azd env set AZURE_SUBSCRIPTION_ID "$(az account show --query id -o tsv)"
+azd env set AZURE_LOCATION "eastus2"
+azd env set AZURE_PRINCIPAL_ID "$(az ad signed-in-user show --query id -o tsv)"
+azd env set AZURE_AAD_ADMIN_LOGIN "$(az ad signed-in-user show --query userPrincipalName -o tsv)"
+azd up
+```
+
+The `postprovision` hook auto-detects your identity, sets SQL Entra-only admin, grants the web app managed identity `db_owner`, seeds the database, and stores demo user passwords in Key Vault. The `postup` hook prints the web app URL and admin credentials.
 
 #### Provision infrastructure only
 
@@ -79,9 +102,7 @@ azd provision          # Deploys Bicep templates, runs postprovision.ps1 hook
 #### Deploy application code only
 
 ```powershell
-azd deploy             # Builds & deploys src/web (.NET) and src/api (Python)
-azd deploy web         # Deploy only the web service
-azd deploy api         # Deploy only the function app
+azd deploy             # Builds & deploys src/web (.NET)
 ```
 
 #### Provision + deploy in one step
@@ -126,25 +147,6 @@ azd config set defaults.location "eastus2"                 # Set default locatio
 
 ---
 
-### Quick Deploy 
-
-```powershell
-git clone https://github.com/MSFTLabs/msftlabs-sre-agent-demo.git
-cd msftlabs-sre-agent-demo
-
-az login
-azd auth login --tenant-id "$(az account show --query tenantId -o tsv)"
-
-azd init
-azd env set AZURE_SUBSCRIPTION_ID "$(az account show --query id -o tsv)"
-azd env set AZURE_LOCATION "eastus2"
-azd up
-```
-
-The `postprovision` hook auto-detects your identity, sets SQL Entra-only admin, grants the web app managed identity `db_owner`, seeds the database, and stores demo user passwords in Key Vault. The `postup` hook prints the web app URL and admin credentials.
-
----
-
 ## Project Structure
 
 ```
@@ -157,17 +159,14 @@ The `postprovision` hook auto-detects your identity, sets SQL Entra-only admin, 
 │       ├── monitoring.bicep    # Log Analytics + App Insights
 │       ├── keyvault.bicep      # Key Vault + secrets
 │       ├── sql.bicep           # SQL Server + Database
-│       ├── functionapp.bicep   # Storage + Function App
 │       ├── alerts.bicep        # Azure Monitor alert rules
 │       └── diagnostics.bicep   # Diagnostic settings
 ├── src/
-│   ├── web/                # ASP.NET Core 8 MVC application
-│   │   ├── Controllers/    # Home, Account, Dashboard, Admin, Health
-│   │   ├── Data/           # EF Core DbContext + seeder
-│   │   ├── Models/         # User, ViewModels
-│   │   └── Views/          # Razor views
-│   └── api/                # Python Azure Function App
-│       └── function_app.py # Chaos engineering endpoints
+│   └── web/                # ASP.NET Core 8 MVC application
+│       ├── Controllers/    # Home, Account, Dashboard, Admin, Health
+│       ├── Data/           # EF Core DbContext + seeder
+│       ├── Models/         # User, ViewModels
+│       └── Views/          # Razor views
 ├── knowledgeFiles/         # SRE Agent knowledge file
 ├── azure.yaml              # Azure Developer CLI config
 ├── GUIDE.md                # Full demo walkthrough

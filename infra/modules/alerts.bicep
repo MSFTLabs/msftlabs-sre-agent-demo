@@ -54,6 +54,7 @@ resource kvAccessAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-previe
     evaluationFrequency: 'PT1M'
     windowSize: 'PT5M'
     scopes: [applicationInsightsId]
+    skipQueryValidation: true
     criteria: {
       allOf: [
         {
@@ -94,6 +95,7 @@ resource sqlFailureAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-prev
     evaluationFrequency: 'PT1M'
     windowSize: 'PT5M'
     scopes: [applicationInsightsId]
+    skipQueryValidation: true
     criteria: {
       allOf: [
         {
@@ -129,17 +131,17 @@ resource wafBlockAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-previe
     displayName: 'SRE Demo: WAF Blocked Requests Detected'
     description: 'Application Gateway WAF blocked requests matching OWASP rules. Investigate for potential attack or false positives.'
     severity: 2
-    enabled: true
+    enabled: false
     evaluationFrequency: 'PT1M'
     windowSize: 'PT5M'
     scopes: [logAnalyticsWorkspaceId]
+    skipQueryValidation: true
     criteria: {
       allOf: [
         {
           query: '''
-            AzureDiagnostics
-            | where Category == "ApplicationGatewayFirewallLog"
-            | where action_s == "Blocked"
+            AGWFirewallLogs
+            | where Action == "Blocked"
           '''
           timeAggregation: 'Count'
           operator: 'GreaterThan'
@@ -173,6 +175,7 @@ resource exceptionSpikeAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-
     evaluationFrequency: 'PT1M'
     windowSize: 'PT5M'
     scopes: [applicationInsightsId]
+    skipQueryValidation: true
     criteria: {
       allOf: [
         {
@@ -196,46 +199,7 @@ resource exceptionSpikeAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-
 }
 
 // ============================================================
-// Alert 5: Function App Error Storm (Sev 2)
-// Fires when the Function App generates a burst of errors
-// ============================================================
-resource funcErrorStormAlert 'Microsoft.Insights/scheduledQueryRules@2023-03-15-preview' = {
-  name: 'alert-function-error-storm'
-  location: location
-  tags: tags
-  properties: {
-    displayName: 'SRE Demo: Function App Error Storm'
-    description: 'High volume of error-level log entries detected from the Function App.'
-    severity: 2
-    enabled: false
-    evaluationFrequency: 'PT1M'
-    windowSize: 'PT5M'
-    scopes: [logAnalyticsWorkspaceId]
-    criteria: {
-      allOf: [
-        {
-          query: '''
-            FunctionAppLogs
-            | where Level == "Error" or Level == "Critical"
-          '''
-          timeAggregation: 'Count'
-          operator: 'GreaterThan'
-          threshold: 1
-          failingPeriods: {
-            numberOfEvaluationPeriods: 1
-            minFailingPeriodsToAlert: 1
-          }
-        }
-      ]
-    }
-    actions: {
-      actionGroups: [for ag in actionGroups: ag.actionGroupId]
-    }
-  }
-}
-
-// ============================================================
-// Alert 6: Application Gateway Unhealthy Backend (Sev 1)
+// Alert 5: Application Gateway Unhealthy Backend (Sev 1)
 // Fires when health probes report backend instances as down
 // ============================================================
 resource appGwHealthAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {

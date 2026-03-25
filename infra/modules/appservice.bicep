@@ -22,9 +22,6 @@ param sqlServerName string
 @description('SQL Database name')
 param sqlDatabaseName string
 
-@description('Function App name for health probe connectivity test')
-param functionAppName string
-
 @description('Application Gateway URL for WAF testing')
 param appGatewayUrl string = ''
 
@@ -60,7 +57,6 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: applicationInsightsConnectionString }
         { name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: '~3' }
         { name: 'KeyVaultName', value: keyVaultName }
-        { name: 'FunctionAppUrl', value: 'https://${functionAppName}.azurewebsites.net' }
         { name: 'AppGatewayUrl', value: appGatewayUrl }
       ]
       connectionStrings: [

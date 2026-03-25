@@ -19,6 +19,7 @@ venv/
 .azure/
 local.settings.json
 infra/preflight-*.bicepparam
+infra/main.json
 
 # IDE
 .vs/

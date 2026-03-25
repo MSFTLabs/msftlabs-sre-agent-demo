@@ -11,18 +11,15 @@ public class HealthController : Controller
     private readonly ApplicationDbContext _context;
     private readonly ILogger<HealthController> _logger;
     private readonly IConfiguration _configuration;
-    private readonly IHttpClientFactory _httpClientFactory;
 
     public HealthController(
         ApplicationDbContext context,
         ILogger<HealthController> logger,
-        IConfiguration configuration,
-        IHttpClientFactory httpClientFactory)
+        IConfiguration configuration)
     {
         _context = context;
         _logger = logger;
         _configuration = configuration;
-        _httpClientFactory = httpClientFactory;
     }
 
     public async Task<IActionResult> Probe()
@@ -68,47 +65,15 @@ public class HealthController : Controller
             _logger.LogError(ex, "Health probe: SQL connectivity check failed");
         }
 
-        // 3. Test Function App API connectivity
-        var funcUrl = _configuration["FunctionAppUrl"];
-        if (!string.IsNullOrEmpty(funcUrl))
-        {
-            model.FunctionAppUrl = funcUrl;
-            try
-            {
-                var client = _httpClientFactory.CreateClient();
-                client.Timeout = TimeSpan.FromSeconds(10);
-                var response = await client.GetAsync($"{funcUrl.TrimEnd('/')}/api/health");
-                model.FunctionAppHealthy = response.IsSuccessStatusCode;
-                model.FunctionAppStatusCode = (int)response.StatusCode;
-            }
-            catch (Exception ex)
-            {
-                model.FunctionAppHealthy = false;
-                model.FunctionAppError = ex.Message;
-                _logger.LogError(ex, "Health probe: Function App API check failed");
-            }
-        }
-        else
-        {
-            model.FunctionAppHealthy = false;
-            model.FunctionAppError = "FunctionAppUrl not configured";
-        }
-
-        model.OverallHealthy = model.ManagedIdentityHealthy && model.SqlHealthy && model.FunctionAppHealthy;
-
-        // Core health = MI + SQL (controls HTTP status for App Gateway probe)
-        // Function App is a dependency check shown on the page but doesn't take down the web app
-        var coreHealthy = model.ManagedIdentityHealthy && model.SqlHealthy;
+        model.OverallHealthy = model.ManagedIdentityHealthy && model.SqlHealthy;
 
         _logger.LogInformation(
-            "Health probe: Core={Core}, MI={MI}, SQL={SQL}, FuncApp={Func}",
-            coreHealthy ? "Healthy" : "Unhealthy",
+            "Health probe: Overall={Overall}, MI={MI}, SQL={SQL}",
+            model.OverallHealthy ? "Healthy" : "Unhealthy",
             model.ManagedIdentityHealthy,
-            model.SqlHealthy,
-            model.FunctionAppHealthy);
+            model.SqlHealthy);
 
-        // Return 503 only when core dependencies (MI + SQL) fail
-        if (!coreHealthy)
+        if (!model.OverallHealthy)
             Response.StatusCode = 503;
 
         return View(model);

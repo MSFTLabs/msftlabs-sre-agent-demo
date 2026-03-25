@@ -6,6 +6,12 @@ param environmentName string
 @description('Primary location for all resources')
 param location string
 
+@description('Object ID of the deploying user (auto-set by preprovision hook)')
+param sqlAadAdminObjectId string
+
+@description('UPN of the deploying user (auto-set by preprovision hook)')
+param sqlAadAdminLogin string
+
 var abbrs = loadJsonContent('./abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var tags = { 'azd-env-name': environmentName }
@@ -28,7 +34,7 @@ module monitoring 'modules/monitoring.bicep' = {
   }
 }
 
-// SQL Server + Database (Entra admin configured by postprovision hook)
+// SQL Server + Database (Entra-only auth required by MCAPS policy at creation time)
 module sql 'modules/sql.bicep' = {
   scope: resourceGroup
   params: {
@@ -36,6 +42,8 @@ module sql 'modules/sql.bicep' = {
     tags: tags
     sqlServerName: '${abbrs.sqlServers}${resourceToken}'
     sqlDatabaseName: 'sredemodb'
+    aadAdminObjectId: sqlAadAdminObjectId
+    aadAdminLogin: sqlAadAdminLogin
   }
 }
 
@@ -64,7 +72,6 @@ module appService 'modules/appservice.bicep' = {
     applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
     sqlServerName: sql.outputs.sqlServerName
     sqlDatabaseName: 'sredemodb'
-    functionAppName: '${abbrs.webSitesFunctions}${resourceToken}'
     appGatewayUrl: 'http://${toLower('${abbrs.networkApplicationGateways}${resourceToken}')}.${location}.cloudapp.azure.com'
   }
 }
@@ -84,24 +91,6 @@ module appGateway 'modules/appgateway.bicep' = {
   }
 }
 
-// Function App (Python)
-module functionApp 'modules/functionapp.bicep' = {
-  scope: resourceGroup
-  params: {
-    location: location
-    tags: tags
-    functionAppName: '${abbrs.webSitesFunctions}${resourceToken}'
-    storageAccountName: '${abbrs.storageStorageAccounts}${resourceToken}'
-    appServicePlanId: appService.outputs.appServicePlanId
-    applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
-    keyVaultName: keyVault.outputs.keyVaultName
-    webAppPrincipalId: appService.outputs.webAppPrincipalId
-    sqlServerName: sql.outputs.sqlServerName
-    appGatewayUrl: 'http://${appGateway.outputs.appGatewayFqdn}'
-    webAppUrl: appService.outputs.webAppUrl
-  }
-}
-
 // Key Vault RBAC: grant Web App access to secrets
 module webKvAccess 'modules/keyvault-access.bicep' = {
   scope: resourceGroup
@@ -111,12 +100,12 @@ module webKvAccess 'modules/keyvault-access.bicep' = {
   }
 }
 
-// Key Vault RBAC: grant Function App access to secrets
-module funcKvAccess 'modules/keyvault-access.bicep' = {
+// Key Vault RBAC: grant deploying user Secrets Officer (for postprovision password seeding)
+module deployerKvOfficer 'modules/keyvault-officer.bicep' = {
   scope: resourceGroup
   params: {
     keyVaultName: keyVault.outputs.keyVaultName
-    principalId: functionApp.outputs.functionAppPrincipalId
+    principalId: sqlAadAdminObjectId
   }
 }
 
@@ -129,11 +118,11 @@ module webSqlAccess 'modules/sql-access.bicep' = {
   }
 }
 
-// Function App RBAC: User Access Administrator + SQL Server Contributor for chaos management
-module funcMgmtRbac 'modules/funcapp-management-rbac.bicep' = {
+// Owner on RG for deployer (required for SRE Agent portal to list the resource group)
+module deployerRgOwner 'modules/deployer-rg-owner.bicep' = {
   scope: resourceGroup
   params: {
-    principalId: functionApp.outputs.functionAppPrincipalId
+    principalId: sqlAadAdminObjectId
   }
 }
 
@@ -155,7 +144,6 @@ module diagnostics 'modules/diagnostics.bicep' = {
   params: {
     logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsWorkspaceId
     webAppName: appService.outputs.webAppName
-    functionAppName: functionApp.outputs.functionAppName
     keyVaultName: keyVault.outputs.keyVaultName
     sqlServerName: sql.outputs.sqlServerName
     sqlDatabaseName: 'sredemodb'
@@ -166,8 +154,6 @@ module diagnostics 'modules/diagnostics.bicep' = {
 output AZURE_RESOURCE_GROUP string = resourceGroup.name
 output AZURE_WEBAPP_NAME string = appService.outputs.webAppName
 output AZURE_WEBAPP_URL string = appService.outputs.webAppUrl
-output AZURE_FUNCTION_APP_NAME string = functionApp.outputs.functionAppName
-output AZURE_FUNCTION_APP_URL string = functionApp.outputs.functionAppUrl
 output AZURE_KEY_VAULT_NAME string = keyVault.outputs.keyVaultName
 output AZURE_SQL_SERVER_NAME string = sql.outputs.sqlServerName
 output AZURE_SQL_SERVER_FQDN string = sql.outputs.sqlServerFqdn

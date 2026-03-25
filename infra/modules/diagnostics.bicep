@@ -4,9 +4,6 @@ param logAnalyticsWorkspaceId string
 @description('Web App name')
 param webAppName string
 
-@description('Function App name')
-param functionAppName string
-
 @description('Key Vault name')
 param keyVaultName string
 
@@ -22,10 +19,6 @@ param storageAccountName string
 // Existing resource references
 resource webApp 'Microsoft.Web/sites@2023-12-01' existing = {
   name: webAppName
-}
-
-resource functionAppRes 'Microsoft.Web/sites@2023-12-01' existing = {
-  name: functionAppName
 }
 
 resource keyVaultRes 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
@@ -56,21 +49,6 @@ resource webAppDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' =
       { category: 'AppServiceConsoleLogs', enabled: true }
       { category: 'AppServiceAppLogs', enabled: true }
       { category: 'AppServicePlatformLogs', enabled: true }
-    ]
-    metrics: [
-      { category: 'AllMetrics', enabled: true }
-    ]
-  }
-}
-
-// Function App diagnostic settings
-resource functionAppDiag 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
-  scope: functionAppRes
-  name: 'functionAppDiagnostics'
-  properties: {
-    workspaceId: logAnalyticsWorkspaceId
-    logs: [
-      { category: 'FunctionAppLogs', enabled: true }
     ]
     metrics: [
       { category: 'AllMetrics', enabled: true }

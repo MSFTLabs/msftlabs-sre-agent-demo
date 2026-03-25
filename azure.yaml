@@ -13,7 +13,3 @@ services:
     project: ./src/web
     host: appservice
     language: dotnet
-  api:
-    project: ./src/api
-    host: function
-    language: python

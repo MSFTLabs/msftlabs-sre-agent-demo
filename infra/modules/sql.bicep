@@ -10,6 +10,12 @@ param sqlServerName string
 @description('Name of the SQL Database')
 param sqlDatabaseName string
 
+@description('Object ID of the Entra admin (auto-set by preprovision hook)')
+param aadAdminObjectId string
+
+@description('UPN of the Entra admin (auto-set by preprovision hook)')
+param aadAdminLogin string
+
 resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
   name: sqlServerName
   location: location
@@ -18,6 +24,14 @@ resource sqlServer 'Microsoft.Sql/servers@2023-08-01-preview' = {
     version: '12.0'
     minimalTlsVersion: '1.2'
     publicNetworkAccess: 'Enabled'
+    administrators: {
+      administratorType: 'ActiveDirectory'
+      principalType: 'User'
+      login: aadAdminLogin
+      sid: aadAdminObjectId
+      tenantId: subscription().tenantId
+      azureADOnlyAuthentication: true
+    }
   }
 }
 

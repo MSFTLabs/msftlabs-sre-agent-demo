@@ -128,9 +128,14 @@ return 0;
 static string ReadPassword(string kvName, string username)
 {
     var secretName = $"user-password-{username}";
-    var psi = new System.Diagnostics.ProcessStartInfo("az",
-        $"keyvault secret show --vault-name {kvName} --name {secretName} --query value -o tsv")
+    var psi = new System.Diagnostics.ProcessStartInfo
     {
+        FileName = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+                       System.Runtime.InteropServices.OSPlatform.Windows) ? "cmd.exe" : "az",
+        Arguments = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+                        System.Runtime.InteropServices.OSPlatform.Windows)
+            ? $"/c az keyvault secret show --vault-name {kvName} --name {secretName} --query value -o tsv"
+            : $"keyvault secret show --vault-name {kvName} --name {secretName} --query value -o tsv",
         RedirectStandardOutput = true,
         RedirectStandardError = true,
         UseShellExecute = false
