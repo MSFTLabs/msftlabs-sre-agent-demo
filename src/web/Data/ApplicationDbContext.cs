@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using SreDemo.Web.Models;
 
+// Note: Users table exists in the DB but is not mapped here.
+// Only the admin account is seeded by scripts/seed-db and used for demos.
+
 namespace SreDemo.Web.Data;
 
 public class ApplicationDbContext : DbContext
@@ -10,18 +13,11 @@ public class ApplicationDbContext : DbContext
     {
     }
 
-    public DbSet<User> Users => Set<User>();
     public DbSet<SitePage> SitePages => Set<SitePage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-
-        modelBuilder.Entity<User>(entity =>
-        {
-            entity.HasIndex(e => e.Username).IsUnique();
-            entity.HasIndex(e => e.Email).IsUnique();
-        });
 
         modelBuilder.Entity<SitePage>(entity =>
         {

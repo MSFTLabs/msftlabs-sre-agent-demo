@@ -1,25 +1,34 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Azure.Security.KeyVault.Secrets;
-using SreDemo.Web.Data;
+using Microsoft.Data.SqlClient;
 using SreDemo.Web.Models;
 
 namespace SreDemo.Web.Controllers;
 
 public class HealthController : Controller
 {
-    private readonly ApplicationDbContext _context;
+    private static string? _probeConnectionString;
     private readonly ILogger<HealthController> _logger;
-    private readonly IConfiguration _configuration;
 
     public HealthController(
-        ApplicationDbContext context,
         ILogger<HealthController> logger,
         IConfiguration configuration)
     {
-        _context = context;
         _logger = logger;
-        _configuration = configuration;
+
+        // Build a dedicated probe connection string with 5-second pool lifetime (once)
+        if (_probeConnectionString == null)
+        {
+            var baseCs = configuration.GetConnectionString("DefaultConnection");
+            if (!string.IsNullOrEmpty(baseCs))
+            {
+                var csb = new SqlConnectionStringBuilder(baseCs)
+                {
+                    LoadBalanceTimeout = 5  // Connections older than 5s are discarded on return to pool
+                };
+                csb.ApplicationName = "HealthProbe"; // Separate pool from EF Core
+                _probeConnectionString = csb.ConnectionString;
+            }
+        }
     }
 
     public async Task<IActionResult> Probe()
@@ -30,32 +39,15 @@ public class HealthController : Controller
             ServerName = Environment.MachineName
         };
 
-        // 1. Test Managed Identity via Key Vault secret read
-        var secretClient = HttpContext.RequestServices.GetService<SecretClient>();
-        if (secretClient != null)
-        {
-            try
-            {
-                await secretClient.GetSecretAsync("demo-secret");
-                model.ManagedIdentityHealthy = true;
-            }
-            catch (Exception ex)
-            {
-                model.ManagedIdentityHealthy = false;
-                model.ManagedIdentityError = ex.Message;
-                _logger.LogError(ex, "Health probe: Managed Identity / Key Vault check failed");
-            }
-        }
-        else
-        {
-            model.ManagedIdentityHealthy = false;
-            model.ManagedIdentityError = "SecretClient not configured (KeyVaultName not set)";
-        }
-
-        // 2. Test SQL Connectivity via EF Core
+        // Test SQL Connectivity via dedicated connection pool (5s lifetime)
         try
         {
-            model.SqlUserCount = await _context.Users.CountAsync();
+            await using var conn = new SqlConnection(_probeConnectionString);
+            await conn.OpenAsync();
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM SitePages";
+            var count = await cmd.ExecuteScalarAsync();
+            model.SqlPageCount = Convert.ToInt32(count);
             model.SqlHealthy = true;
         }
         catch (Exception ex)
@@ -65,12 +57,11 @@ public class HealthController : Controller
             _logger.LogError(ex, "Health probe: SQL connectivity check failed");
         }
 
-        model.OverallHealthy = model.ManagedIdentityHealthy && model.SqlHealthy;
+        model.OverallHealthy = model.SqlHealthy;
 
         _logger.LogInformation(
-            "Health probe: Overall={Overall}, MI={MI}, SQL={SQL}",
+            "Health probe: Overall={Overall}, SQL={SQL}",
             model.OverallHealthy ? "Healthy" : "Unhealthy",
-            model.ManagedIdentityHealthy,
             model.SqlHealthy);
 
         if (!model.OverallHealthy)

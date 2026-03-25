@@ -47,19 +47,6 @@ module sql 'modules/sql.bicep' = {
   }
 }
 
-// Key Vault with secrets
-module keyVault 'modules/keyvault.bicep' = {
-  scope: resourceGroup
-  params: {
-    location: location
-    tags: tags
-    keyVaultName: '${abbrs.keyVaultVaults}${resourceToken}'
-    sqlServerFqdn: sql.outputs.sqlServerFqdn
-    sqlDatabaseName: 'sredemodb'
-    appInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
-  }
-}
-
 // App Service Plan + Web App
 module appService 'modules/appservice.bicep' = {
   scope: resourceGroup
@@ -68,7 +55,6 @@ module appService 'modules/appservice.bicep' = {
     tags: tags
     appServicePlanName: '${abbrs.webServerFarms}${resourceToken}'
     webAppName: '${abbrs.webSitesAppService}${resourceToken}'
-    keyVaultName: keyVault.outputs.keyVaultName
     applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
     sqlServerName: sql.outputs.sqlServerName
     sqlDatabaseName: 'sredemodb'
@@ -91,21 +77,12 @@ module appGateway 'modules/appgateway.bicep' = {
   }
 }
 
-// Key Vault RBAC: grant Web App access to secrets
-module webKvAccess 'modules/keyvault-access.bicep' = {
+// SQL Firewall: allow only App Service outbound IPs (no blanket "Allow Azure Services")
+module sqlFirewall 'modules/sql-firewall.bicep' = {
   scope: resourceGroup
   params: {
-    keyVaultName: keyVault.outputs.keyVaultName
-    principalId: appService.outputs.webAppPrincipalId
-  }
-}
-
-// Key Vault RBAC: grant deploying user Secrets Officer (for postprovision password seeding)
-module deployerKvOfficer 'modules/keyvault-officer.bicep' = {
-  scope: resourceGroup
-  params: {
-    keyVaultName: keyVault.outputs.keyVaultName
-    principalId: sqlAadAdminObjectId
+    sqlServerName: sql.outputs.sqlServerName
+    outboundIpAddresses: appService.outputs.possibleOutboundIpAddresses
   }
 }
 
@@ -132,8 +109,6 @@ module alerts 'modules/alerts.bicep' = {
   params: {
     location: location
     tags: tags
-    applicationInsightsId: monitoring.outputs.applicationInsightsId
-    logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsWorkspaceId
     appGatewayResourceId: appGateway.outputs.appGatewayId
   }
 }
@@ -144,17 +119,14 @@ module diagnostics 'modules/diagnostics.bicep' = {
   params: {
     logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsWorkspaceId
     webAppName: appService.outputs.webAppName
-    keyVaultName: keyVault.outputs.keyVaultName
     sqlServerName: sql.outputs.sqlServerName
     sqlDatabaseName: 'sredemodb'
-    storageAccountName: '${abbrs.storageStorageAccounts}${resourceToken}'
   }
 }
 
 output AZURE_RESOURCE_GROUP string = resourceGroup.name
 output AZURE_WEBAPP_NAME string = appService.outputs.webAppName
 output AZURE_WEBAPP_URL string = appService.outputs.webAppUrl
-output AZURE_KEY_VAULT_NAME string = keyVault.outputs.keyVaultName
 output AZURE_SQL_SERVER_NAME string = sql.outputs.sqlServerName
 output AZURE_SQL_SERVER_FQDN string = sql.outputs.sqlServerFqdn
 output AZURE_SQL_DATABASE_NAME string = sql.outputs.sqlDatabaseName

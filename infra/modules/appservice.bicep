@@ -10,9 +10,6 @@ param appServicePlanName string
 @description('Name of the Web App')
 param webAppName string
 
-@description('Key Vault name for secret references')
-param keyVaultName string
-
 @description('Application Insights connection string')
 param applicationInsightsConnectionString string
 
@@ -56,7 +53,6 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
       appSettings: [
         { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: applicationInsightsConnectionString }
         { name: 'ApplicationInsightsAgent_EXTENSION_VERSION', value: '~3' }
-        { name: 'KeyVaultName', value: keyVaultName }
         { name: 'AppGatewayUrl', value: appGatewayUrl }
       ]
       connectionStrings: [
@@ -75,3 +71,4 @@ output webAppUrl string = 'https://${webApp.properties.defaultHostName}'
 output webAppFqdn string = webApp.properties.defaultHostName
 output webAppPrincipalId string = webApp.identity.principalId
 output appServicePlanId string = appServicePlan.id
+output possibleOutboundIpAddresses string = webApp.properties.possibleOutboundIpAddresses

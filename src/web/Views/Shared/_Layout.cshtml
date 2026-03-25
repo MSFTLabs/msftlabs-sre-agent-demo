@@ -21,23 +21,6 @@
             <a class="navbar-brand position-absolute start-50 translate-middle-x fw-semibold" asp-controller="Home" asp-action="Index">
                 MSFTLabs SRE Demo
             </a>
-            <div class="d-flex align-items-center">
-                @if (User.Identity?.IsAuthenticated == true)
-                {
-                    <span class="text-light me-3 d-none d-md-inline">
-                        <i class="bi bi-person-circle"></i> @(User.FindFirst("DisplayName")?.Value ?? User.Identity.Name)
-                    </span>
-                    <form asp-controller="Account" asp-action="Logout" method="post" class="d-inline">
-                        @Html.AntiForgeryToken()
-                        <button type="submit" class="btn btn-outline-light btn-sm">Logout</button>
-                    </form>
-                }
-                else
-                {
-                    <a class="btn btn-outline-light btn-sm me-2" asp-controller="Account" asp-action="Login">Login</a>
-                    <a class="btn btn-light btn-sm" asp-controller="Account" asp-action="Register">Register</a>
-                }
-            </div>
         </div>
     </nav>
 
@@ -68,39 +51,7 @@
                         <i class="bi bi-heart-pulse me-2"></i>Health Probe
                     </a>
                 </li>
-                @if (User.Identity?.IsAuthenticated == true)
-                {
-                    <li><hr class="border-secondary my-1" /></li>
-                    <li class="nav-item">
-                        <a class="nav-link text-white px-3 py-2" asp-controller="Dashboard" asp-action="Index">
-                            <i class="bi bi-speedometer2 me-2"></i>Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link text-white px-3 py-2" asp-controller="Dashboard" asp-action="Integration">
-                            <i class="bi bi-plug me-2"></i>Integration
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link text-white px-3 py-2" asp-controller="Dashboard" asp-action="Profile">
-                            <i class="bi bi-person me-2"></i>Profile
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link text-white px-3 py-2" asp-controller="Dashboard" asp-action="Settings">
-                            <i class="bi bi-gear me-2"></i>Settings
-                        </a>
-                    </li>
-                }
-                @if (User.IsInRole("Admin"))
-                {
-                    <li><hr class="border-secondary my-1" /></li>
-                    <li class="nav-item">
-                        <a class="nav-link text-warning px-3 py-2" asp-controller="Admin" asp-action="Index">
-                            <i class="bi bi-shield-exclamation me-2"></i>Admin - Chaos Triggers
-                        </a>
-                    </li>
-                }
+
             </ul>
         </div>
     </div>

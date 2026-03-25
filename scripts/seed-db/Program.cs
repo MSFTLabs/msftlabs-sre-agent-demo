@@ -3,19 +3,18 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
 
-// Usage: dotnet run -- <sqlFqdn> <dbName> <accessToken> <kvName>
-// Reads passwords from Key Vault via az CLI, hashes with BCrypt, creates schema and seeds data.
+// Usage: dotnet run -- <sqlFqdn> <dbName> <accessToken>
+// Creates schema and seeds/updates site pages.
 
-if (args.Length < 4)
+if (args.Length < 3)
 {
-    Console.Error.WriteLine("Usage: dotnet run -- <sqlFqdn> <dbName> <accessToken> <kvName>");
+    Console.Error.WriteLine("Usage: dotnet run -- <sqlFqdn> <dbName> <accessToken>");
     return 1;
 }
 
 var sqlFqdn = args[0];
 var dbName = args[1];
 var accessToken = args[2];
-var kvName = args[3];
 
 var connStr = $"Server=tcp:{sqlFqdn},1433;Initial Catalog={dbName};Encrypt=True;TrustServerCertificate=False;Connection Timeout=60;";
 
@@ -25,30 +24,6 @@ conn.Open();
 Console.WriteLine($"Connected to {sqlFqdn}/{dbName}");
 
 // ---------- Create schema ----------
-ExecuteNonQuery(conn, @"
-IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'Users')
-CREATE TABLE [Users] (
-    [Id]          INT            IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    [Username]    NVARCHAR(50)   NOT NULL,
-    [Email]       NVARCHAR(256)  NOT NULL,
-    [PasswordHash] NVARCHAR(MAX) NOT NULL,
-    [FirstName]   NVARCHAR(50)   NOT NULL DEFAULT '',
-    [LastName]    NVARCHAR(50)   NOT NULL DEFAULT '',
-    [DisplayName] NVARCHAR(100)  NOT NULL DEFAULT '',
-    [Bio]         NVARCHAR(500)  NOT NULL DEFAULT '',
-    [Role]        NVARCHAR(20)   NOT NULL DEFAULT 'User',
-    [CreatedAt]   DATETIME2      NOT NULL DEFAULT SYSUTCDATETIME(),
-    [LastLoginAt] DATETIME2      NULL
-);
-");
-
-ExecuteNonQuery(conn, @"
-IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Users_Username')
-    CREATE UNIQUE INDEX IX_Users_Username ON [Users]([Username]);
-IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_Users_Email')
-    CREATE UNIQUE INDEX IX_Users_Email ON [Users]([Email]);
-");
-
 ExecuteNonQuery(conn, @"
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'SitePages')
 CREATE TABLE [SitePages] (
@@ -72,52 +47,35 @@ IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'IX_SitePages_Slug')
 
 Console.WriteLine("Schema created.");
 
-// ---------- Seed users ----------
-if (CountRows(conn, "Users") == 0)
+// ---------- Seed site pages (true upsert: update existing, insert missing) ----------
 {
-    Console.WriteLine("Seeding users...");
-    var users = new (string username, string email, string first, string last, string display, string role, string bio)[]
-    {
-        ("admin",      "admin@msftlabs.org",      "SRE",     "Administrator", "SRE Administrator",  "Admin", "Platform reliability engineer and demo environment administrator."),
-        ("jmorales",   "jmorales@msftlabs.org",   "Juan",    "Morales",       "Juan Morales",        "User",  "Cloud solutions architect focused on resilience patterns."),
-        ("akovacs",    "akovacs@msftlabs.org",    "Andrea",  "Kovacs",        "Andrea Kovacs",       "User",  "Site reliability engineer specializing in observability."),
-        ("schen",      "schen@msftlabs.org",      "Sophia",  "Chen",          "Sophia Chen",         "User",  "DevOps lead with deep experience in incident management."),
-        ("bmurphy",    "bmurphy@msftlabs.org",    "Brian",   "Murphy",        "Brian Murphy",        "User",  "Infrastructure engineer working on Azure landing zones."),
-        ("pnakamura",  "pnakamura@msftlabs.org",  "Priya",   "Nakamura",      "Priya Nakamura",      "User",  "Application performance analyst and monitoring specialist."),
-        ("dwilliams",  "dwilliams@msftlabs.org",  "Daniel",  "Williams",      "Daniel Williams",     "User",  "Security-focused SRE with background in threat modeling."),
-        ("lpetrova",   "lpetrova@msftlabs.org",   "Lena",    "Petrova",       "Lena Petrova",        "User",  "Database reliability engineer managing SQL and Cosmos DB fleets."),
-        ("rsingh",     "rsingh@msftlabs.org",     "Raj",     "Singh",         "Raj Singh",           "User",  "Automation engineer building self-healing infrastructure."),
-        ("efischer",   "efischer@msftlabs.org",   "Ema",     "Fischer",       "Ema Fischer",         "User",  "Capacity planning lead focused on cost-effective scaling."),
-        ("okim",       "okim@msftlabs.org",       "Oliver",  "Kim",           "Oliver Kim",          "User",  "Incident responder and chaos engineering practitioner."),
-    };
-
-    foreach (var u in users)
-    {
-        var password = ReadPassword(kvName, u.username);
-        var hash = BCrypt.Net.BCrypt.HashPassword(password);
-        InsertUser(conn, u.username, u.email, hash, u.first, u.last, u.display, u.role, u.bio);
-        Console.WriteLine($"  [seeded] {u.username}");
-    }
-}
-else
-{
-    Console.WriteLine("Users table already has data - skipping user seed.");
-}
-
-// ---------- Seed site pages ----------
-if (CountRows(conn, "SitePages") == 0)
-{
-    Console.WriteLine("Seeding site pages...");
+    Console.WriteLine("Checking site pages...");
     var pages = GetSitePages();
+    var inserted = 0;
+    var updated = 0;
     foreach (var p in pages)
     {
-        InsertPage(conn, p.slug, p.title, p.content, p.summary, p.category, p.sortOrder);
-        Console.WriteLine($"  [seeded] {p.slug}");
+        var exists = false;
+        using (var chk = conn.CreateCommand())
+        {
+            chk.CommandText = "SELECT COUNT(*) FROM [SitePages] WHERE [Slug] = @s";
+            chk.Parameters.AddWithValue("@s", p.slug);
+            exists = (int)chk.ExecuteScalar()! > 0;
+        }
+        if (exists)
+        {
+            UpdatePage(conn, p.slug, p.title, p.content, p.summary, p.category, p.sortOrder);
+            Console.WriteLine($"  [updated] {p.slug}");
+            updated++;
+        }
+        else
+        {
+            InsertPage(conn, p.slug, p.title, p.content, p.summary, p.category, p.sortOrder);
+            Console.WriteLine($"  [seeded] {p.slug}");
+            inserted++;
+        }
     }
-}
-else
-{
-    Console.WriteLine("SitePages table already has data - skipping page seed.");
+    Console.WriteLine($"  {inserted} inserted, {updated} updated.");
 }
 
 Console.WriteLine("Database seed complete.");
@@ -125,61 +83,11 @@ return 0;
 
 // ========== Helpers ==========
 
-static string ReadPassword(string kvName, string username)
-{
-    var secretName = $"user-password-{username}";
-    var psi = new System.Diagnostics.ProcessStartInfo
-    {
-        FileName = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
-                       System.Runtime.InteropServices.OSPlatform.Windows) ? "cmd.exe" : "az",
-        Arguments = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
-                        System.Runtime.InteropServices.OSPlatform.Windows)
-            ? $"/c az keyvault secret show --vault-name {kvName} --name {secretName} --query value -o tsv"
-            : $"keyvault secret show --vault-name {kvName} --name {secretName} --query value -o tsv",
-        RedirectStandardOutput = true,
-        RedirectStandardError = true,
-        UseShellExecute = false
-    };
-    using var proc = System.Diagnostics.Process.Start(psi)!;
-    var output = proc.StandardOutput.ReadToEnd().Trim();
-    proc.WaitForExit();
-    if (proc.ExitCode != 0 || string.IsNullOrEmpty(output))
-    {
-        Console.WriteLine($"  [warn] Could not read KV secret for {username}, using fallback");
-        return $"LocalDev!{username}2026#";
-    }
-    return output;
-}
-
 static void ExecuteNonQuery(SqlConnection conn, string sql)
 {
     using var cmd = conn.CreateCommand();
     cmd.CommandText = sql;
     cmd.CommandTimeout = 60;
-    cmd.ExecuteNonQuery();
-}
-
-static int CountRows(SqlConnection conn, string table)
-{
-    using var cmd = conn.CreateCommand();
-    cmd.CommandText = $"SELECT COUNT(*) FROM [{table}]";
-    return (int)cmd.ExecuteScalar()!;
-}
-
-static void InsertUser(SqlConnection conn, string username, string email, string hash,
-    string first, string last, string display, string role, string bio)
-{
-    using var cmd = conn.CreateCommand();
-    cmd.CommandText = @"INSERT INTO [Users] ([Username],[Email],[PasswordHash],[FirstName],[LastName],[DisplayName],[Role],[Bio])
-                        VALUES (@u,@e,@h,@f,@l,@d,@r,@b)";
-    cmd.Parameters.AddWithValue("@u", username);
-    cmd.Parameters.AddWithValue("@e", email);
-    cmd.Parameters.AddWithValue("@h", hash);
-    cmd.Parameters.AddWithValue("@f", first);
-    cmd.Parameters.AddWithValue("@l", last);
-    cmd.Parameters.AddWithValue("@d", display);
-    cmd.Parameters.AddWithValue("@r", role);
-    cmd.Parameters.AddWithValue("@b", bio);
     cmd.ExecuteNonQuery();
 }
 
@@ -198,10 +106,185 @@ static void InsertPage(SqlConnection conn, string slug, string title, string con
     cmd.ExecuteNonQuery();
 }
 
+static void UpdatePage(SqlConnection conn, string slug, string title, string content,
+    string summary, string category, int sortOrder)
+{
+    using var cmd = conn.CreateCommand();
+    cmd.CommandText = @"UPDATE [SitePages] SET [Title]=@t, [Content]=@c, [Summary]=@sm,
+                        [Category]=@cat, [SortOrder]=@so, [UpdatedAt]=SYSUTCDATETIME()
+                        WHERE [Slug]=@s";
+    cmd.Parameters.AddWithValue("@s", slug);
+    cmd.Parameters.AddWithValue("@t", title);
+    cmd.Parameters.AddWithValue("@c", content);
+    cmd.Parameters.AddWithValue("@sm", summary);
+    cmd.Parameters.AddWithValue("@cat", category);
+    cmd.Parameters.AddWithValue("@so", sortOrder);
+    cmd.ExecuteNonQuery();
+}
+
 static List<(string slug, string title, string content, string summary, string category, int sortOrder)> GetSitePages()
 {
     return new()
     {
+        ("home",
+         "Home",
+         @"<div class=""text-center mt-4"">
+    <h1 class=""display-5 fw-semibold"">MSFTLabs SRE Demo</h1>
+    <p class=""lead text-muted"">A demonstration environment for validating and testing Azure SRE Agent capabilities.</p>
+</div>
+
+<div class=""row justify-content-center mt-4"">
+    <div class=""col-lg-8"">
+        <div class=""ratio ratio-16x9 shadow rounded overflow-hidden"">
+            <iframe src=""https://www.youtube.com/embed/6vDrThUjDOc""
+                    title=""Azure SRE Agent""
+                    allow=""accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture""
+                    allowfullscreen></iframe>
+        </div>
+    </div>
+</div>
+
+<hr class=""my-5"" />
+
+<h3 class=""text-center mb-4"">Azure SRE Agent Features</h3>
+<div class=""row g-4"">
+    <div class=""col-md-4"">
+        <div class=""card h-100 border-0 shadow-sm"">
+            <div class=""card-body"">
+                <h5 class=""card-title""><i class=""bi bi-search text-primary me-2""></i>Automated Incident Detection</h5>
+                <p class=""card-text"">Continuously monitors Application Insights and Azure Monitor telemetry to detect anomalies, errors, and performance degradation in real time.</p>
+            </div>
+        </div>
+    </div>
+    <div class=""col-md-4"">
+        <div class=""card h-100 border-0 shadow-sm"">
+            <div class=""card-body"">
+                <h5 class=""card-title""><i class=""bi bi-diagram-3 text-primary me-2""></i>Root Cause Analysis</h5>
+                <p class=""card-text"">Correlates signals across metrics, logs, and traces to identify the root cause of incidents, reducing mean time to identify (MTTI).</p>
+            </div>
+        </div>
+    </div>
+    <div class=""col-md-4"">
+        <div class=""card h-100 border-0 shadow-sm"">
+            <div class=""card-body"">
+                <h5 class=""card-title""><i class=""bi bi-wrench text-primary me-2""></i>Automated Remediation</h5>
+                <p class=""card-text"">Executes pre-approved remediation actions such as restarting services, scaling resources, or rolling back deployments.</p>
+            </div>
+        </div>
+    </div>
+    <div class=""col-md-4"">
+        <div class=""card h-100 border-0 shadow-sm"">
+            <div class=""card-body"">
+                <h5 class=""card-title""><i class=""bi bi-shield-check text-primary me-2""></i>Security Signal Integration</h5>
+                <p class=""card-text"">Ingests WAF logs, identity changes, and access control events to detect and respond to security-related reliability issues.</p>
+            </div>
+        </div>
+    </div>
+    <div class=""col-md-4"">
+        <div class=""card h-100 border-0 shadow-sm"">
+            <div class=""card-body"">
+                <h5 class=""card-title""><i class=""bi bi-graph-up text-primary me-2""></i>SLO Tracking</h5>
+                <p class=""card-text"">Tracks error budget consumption against defined service-level objectives and alerts when burn rate exceeds thresholds.</p>
+            </div>
+        </div>
+    </div>
+    <div class=""col-md-4"">
+        <div class=""card h-100 border-0 shadow-sm"">
+            <div class=""card-body"">
+                <h5 class=""card-title""><i class=""bi bi-arrow-repeat text-primary me-2""></i>Continuous Learning</h5>
+                <p class=""card-text"">Improves detection and remediation accuracy over time by learning from resolved incidents and post-incident reviews.</p>
+            </div>
+        </div>
+    </div>
+</div>",
+         "MSFTLabs SRE Agent Demo landing page.",
+         "Navigation", 0),
+
+        ("about-sre",
+         "About Site Reliability Engineering",
+         @"<div class=""row"">
+    <div class=""col-lg-8"">
+        <p class=""lead"">Site Reliability Engineering (SRE) is a discipline that applies software engineering practices to infrastructure and operations problems. Originally developed at Google, SRE has become the industry standard for building and operating reliable, scalable production systems.</p>
+
+        <h4 class=""mt-4"">What is Azure SRE Agent?</h4>
+        <p>Azure SRE Agent is an AI-powered assistant that helps platform engineering and SRE teams detect, diagnose, and resolve production incidents faster. It continuously monitors telemetry from Azure Monitor, Application Insights, and Log Analytics to identify anomalies and correlate signals across the full application stack.</p>
+
+        <h4 class=""mt-4"">Core SRE Principles</h4>
+        <ul>
+            <li><strong>Embracing Risk</strong> -- Balancing reliability investment against feature velocity using error budgets</li>
+            <li><strong>Service Level Objectives</strong> -- Defining quantitative reliability targets that align engineering and business goals</li>
+            <li><strong>Eliminating Toil</strong> -- Automating repetitive operational work to focus on engineering improvements</li>
+            <li><strong>Monitoring and Observability</strong> -- Building comprehensive visibility into system behavior through metrics, logs, and traces</li>
+            <li><strong>Release Engineering</strong> -- Making deployments reliable, predictable, and reversible</li>
+            <li><strong>Simplicity</strong> -- Managing system complexity to prevent fragility and reduce incident surface area</li>
+        </ul>
+
+        <h4 class=""mt-4"">This Demo Environment</h4>
+        <p>This application provides a safe environment to validate SRE Agent capabilities against controlled failure modes. The infrastructure includes:</p>
+        <ul>
+            <li>ASP.NET Core web application with Application Insights telemetry</li>
+            <li>Azure SQL Database with Entra ID (managed identity) authentication</li>
+            <li>Azure Key Vault for secret management with managed identity access</li>
+            <li>Application Gateway with WAF v2 (OWASP 3.2 rule set)</li>
+            <li>Log Analytics workspace for centralized diagnostics</li>
+        </ul>
+
+        <h4 class=""mt-4"">Learn More</h4>
+        <div class=""list-group"">
+            <a href=""https://learn.microsoft.com/en-us/azure/site-reliability-engineering/"" class=""list-group-item list-group-item-action"" target=""_blank"" rel=""noopener noreferrer"">
+                <strong>Azure SRE Documentation</strong> -- Microsoft Learn overview of SRE principles and practices on Azure
+            </a>
+            <a href=""https://learn.microsoft.com/en-us/azure/azure-monitor/overview"" class=""list-group-item list-group-item-action"" target=""_blank"" rel=""noopener noreferrer"">
+                <strong>Azure Monitor Overview</strong> -- Comprehensive monitoring for applications and infrastructure
+            </a>
+            <a href=""https://learn.microsoft.com/en-us/azure/azure-monitor/app/app-insights-overview"" class=""list-group-item list-group-item-action"" target=""_blank"" rel=""noopener noreferrer"">
+                <strong>Application Insights</strong> -- Application performance management and diagnostics
+            </a>
+            <a href=""https://learn.microsoft.com/en-us/azure/key-vault/general/overview"" class=""list-group-item list-group-item-action"" target=""_blank"" rel=""noopener noreferrer"">
+                <strong>Azure Key Vault</strong> -- Safeguard cryptographic keys and secrets
+            </a>
+            <a href=""https://learn.microsoft.com/en-us/azure/web-application-firewall/ag/ag-overview"" class=""list-group-item list-group-item-action"" target=""_blank"" rel=""noopener noreferrer"">
+                <strong>Web Application Firewall on Application Gateway</strong> -- Protect web applications from common exploits
+            </a>
+            <a href=""https://learn.microsoft.com/en-us/azure/chaos-studio/chaos-studio-overview"" class=""list-group-item list-group-item-action"" target=""_blank"" rel=""noopener noreferrer"">
+                <strong>Azure Chaos Studio</strong> -- Improve application resilience through chaos engineering
+            </a>
+        </div>
+    </div>
+    <div class=""col-lg-4"">
+        <div class=""card shadow-sm mb-4"">
+            <div class=""card-body"">
+                <h5 class=""card-title"">SRE Video Overview</h5>
+                <div class=""ratio ratio-16x9"">
+                    <iframe src=""https://www.youtube.com/embed/6vDrThUjDOc""
+                            title=""Azure SRE Agent""
+                            allow=""accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture""
+                            allowfullscreen></iframe>
+                </div>
+            </div>
+        </div>
+        <div class=""card shadow-sm"">
+            <div class=""card-body"">
+                <h5 class=""card-title"">Key Concepts</h5>
+                <dl>
+                    <dt>SLI</dt>
+                    <dd>Service Level Indicator -- a quantitative measure of service quality</dd>
+                    <dt>SLO</dt>
+                    <dd>Service Level Objective -- a target value for an SLI</dd>
+                    <dt>Error Budget</dt>
+                    <dd>The acceptable amount of unreliability within a measurement window</dd>
+                    <dt>Toil</dt>
+                    <dd>Repetitive, automatable operational work that scales linearly with service size</dd>
+                    <dt>MTTI / MTTR</dt>
+                    <dd>Mean Time to Identify / Mean Time to Resolve</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>",
+         "Overview of SRE principles and the Azure SRE Agent demo environment.",
+         "Navigation", 0),
+
         ("monitoring-fundamentals",
          "Monitoring Fundamentals with Azure Monitor",
          @"<h3>Observability as an SRE Discipline</h3>

@@ -17,15 +17,17 @@ public class HomeController : Controller
         _context = context;
     }
 
-    public IActionResult Index()
+    public async Task<IActionResult> Index()
     {
         _logger.LogInformation("Home page visited");
-        return View();
+        var page = await _context.SitePages.FirstAsync(p => p.Slug == "home" && p.IsActive);
+        return View(page);
     }
 
-    public IActionResult AboutSre()
+    public async Task<IActionResult> AboutSre()
     {
-        return View();
+        var page = await _context.SitePages.FirstAsync(p => p.Slug == "about-sre" && p.IsActive);
+        return View(page);
     }
 
     public async Task<IActionResult> ContentPage(string slug)

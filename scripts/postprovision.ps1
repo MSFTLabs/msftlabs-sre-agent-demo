@@ -1,18 +1,16 @@
 #!/usr/bin/env pwsh
 # postprovision.ps1 - Adds deployer firewall rule, grants web app db_owner, seeds data
 # Runs automatically after 'azd provision'
-# SQL Entra admin, KV Secrets Officer, and RG Owner are set in Bicep (MCAPS policy requires Entra-only auth at creation)
+# SQL Entra admin and RG Owner are set in Bicep (MCAPS policy requires Entra-only auth at creation)
 
 $ErrorActionPreference = 'Stop'
 
-$kvName        = $env:AZURE_KEY_VAULT_NAME
 $sqlServerName = $env:AZURE_SQL_SERVER_NAME
 $sqlDbName     = $env:AZURE_SQL_DATABASE_NAME
 $webAppName    = $env:AZURE_WEBAPP_NAME
 $rgName        = $env:AZURE_RESOURCE_GROUP
 if (-not $rgName) { $rgName = "rg-$($env:AZURE_ENV_NAME)" }
 
-if (-not $kvName)        { Write-Error "AZURE_KEY_VAULT_NAME not set."; exit 1 }
 if (-not $sqlServerName) { Write-Error "AZURE_SQL_SERVER_NAME not set."; exit 1 }
 if (-not $sqlDbName)     { Write-Error "AZURE_SQL_DATABASE_NAME not set."; exit 1 }
 if (-not $webAppName)    { Write-Error "AZURE_WEBAPP_NAME not set."; exit 1 }
@@ -42,55 +40,10 @@ if ($myIp) {
 }
 
 # ============================================================
-# 2) Store demo user passwords in Key Vault
-# ============================================================
-$usernames = @('admin', 'jmorales', 'akovacs', 'schen', 'bmurphy', 'pnakamura', 'dwilliams', 'lpetrova', 'rsingh', 'efischer', 'okim')
-
-function New-RandomPassword {
-    param([int]$Length = 16)
-    $upper   = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
-    $lower   = 'abcdefghjkmnpqrstuvwxyz'
-    $digits  = '23456789'
-    $special = '!@#$&'
-    $chars = @()
-    $chars += $upper[(Get-Random -Maximum $upper.Length)]
-    $chars += $lower[(Get-Random -Maximum $lower.Length)]
-    $chars += $digits[(Get-Random -Maximum $digits.Length)]
-    $chars += $special[(Get-Random -Maximum $special.Length)]
-    $pool = $upper + $lower + $digits + $special
-    for ($i = $chars.Count; $i -lt $Length; $i++) {
-        $chars += $pool[(Get-Random -Maximum $pool.Length)]
-    }
-    return -join ($chars | Get-Random -Count $chars.Count)
-}
-
-Write-Host ""
-Write-Host "=== Step 2: Storing demo user passwords in Key Vault: $kvName ===" -ForegroundColor Cyan
-Write-Host ""
-
-foreach ($username in $usernames) {
-    $secretName = "user-password-$username"
-    $existing = $null
-    $existing = az keyvault secret show --vault-name $kvName --name $secretName --query "value" -o tsv 2>$null
-    $LASTEXITCODE = 0  # reset after the show command
-    if ($existing) {
-        Write-Host "  [skip]    $secretName (already exists)" -ForegroundColor Yellow
-        continue
-    }
-    $password = New-RandomPassword
-    $null = az keyvault secret set --vault-name $kvName --name $secretName --value $password -o none 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "  [failed]  $secretName - check Key Vault RBAC permissions"
-    } else {
-        Write-Host "  [created] $secretName" -ForegroundColor Green
-    }
-}
-
-# ============================================================
-# 3) Grant Web App managed identity SQL access (db_owner)
+# 2) Grant Web App managed identity SQL access (db_owner)
 # ============================================================
 Write-Host ""
-Write-Host "=== Step 3: Granting Web App managed identity SQL access ===" -ForegroundColor Cyan
+Write-Host "=== Step 2: Granting Web App managed identity SQL access ===" -ForegroundColor Cyan
 
 $token = az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv 2>$null
 if (-not $token) {
@@ -120,10 +73,10 @@ END
 }
 
 # ============================================================
-# 4) Create schema and seed data via .NET seed tool
+# 3) Create schema and seed data via .NET seed tool
 # ============================================================
 Write-Host ""
-Write-Host "=== Step 4: Creating schema and seeding database ===" -ForegroundColor Cyan
+Write-Host "=== Step 3: Creating schema and seeding database ===" -ForegroundColor Cyan
 
 # Refresh token (may have expired during steps above)
 $token = az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv 2>$null
@@ -131,7 +84,7 @@ $token = az account get-access-token --resource https://database.windows.net/ --
 $seedDir = Join-Path $PSScriptRoot "seed-db"
 Push-Location $seedDir
 try {
-    dotnet run --no-launch-profile -- $sqlFqdn $sqlDbName $token $kvName
+    dotnet run --no-launch-profile -- $sqlFqdn $sqlDbName $token
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Database seed failed (exit code $LASTEXITCODE)"
     }
@@ -140,13 +93,20 @@ try {
 }
 
 # ============================================================
-# 5) Clean up temp firewall rule
+# 4) Clean up firewall rules
 # ============================================================
 Write-Host ""
-Write-Host "=== Step 5: Cleaning up deployer firewall rule ===" -ForegroundColor Cyan
+Write-Host "=== Step 4: Cleaning up firewall rules ===" -ForegroundColor Cyan
+
+# Remove temp deployer rule
 az sql server firewall-rule delete --resource-group $rgName --server $sqlServerName `
     --name postprovision-deployer -o none 2>$null
-Write-Host "  [done] Firewall rule removed" -ForegroundColor Green
+Write-Host "  [done] Deployer firewall rule removed" -ForegroundColor Green
+
+# Remove "Allow Azure services" blanket rule if it exists (we use per-IP rules instead)
+az sql server firewall-rule delete --resource-group $rgName --server $sqlServerName `
+    --name AllowAllWindowsAzureIps -o none 2>$null
+Write-Host "  [done] AllowAllWindowsAzureIps rule removed (using per-IP rules only)" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "Post-provision complete." -ForegroundColor Green
