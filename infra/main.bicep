@@ -6,10 +6,10 @@ param environmentName string
 @description('Primary location for all resources')
 param location string
 
-@description('Azure AD admin object ID for SQL Server')
+@description('Object ID of the deploying user (auto-detected by preprovision hook)')
 param sqlAadAdminObjectId string
 
-@description('Azure AD admin login name')
+@description('UPN of the deploying user (auto-detected by preprovision hook)')
 param sqlAadAdminLogin string
 
 var abbrs = loadJsonContent('./abbreviations.json')

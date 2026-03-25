@@ -71,11 +71,13 @@ $myIp = (az rest --method get --url "https://api.ipify.org" -o tsv 2>$null)
 if (-not $myIp) {
     # Fallback: try to connect and parse from error
     Write-Warning "Could not detect public IP. Attempting to add AllowAllAzure rule."
-    az sql server firewall-rule create --resource-group rg-sre-demo --server $sqlServerName `
+    $rgName = $env:AZURE_RESOURCE_GROUP ?? "rg-$($env:AZURE_ENV_NAME)"
+    az sql server firewall-rule create --resource-group $rgName --server $sqlServerName `
         --name AllowAzureServices --start-ip-address 0.0.0.0 --end-ip-address 0.0.0.0 -o none 2>$null
 } else {
     Write-Host "  Deployer IP: $myIp"
-    az sql server firewall-rule create --resource-group rg-sre-demo --server $sqlServerName `
+    $rgName = $env:AZURE_RESOURCE_GROUP ?? "rg-$($env:AZURE_ENV_NAME)"
+    az sql server firewall-rule create --resource-group $rgName --server $sqlServerName `
         --name postprovision-deployer --start-ip-address $myIp --end-ip-address $myIp -o none 2>$null
     Write-Host "  [done] Firewall rule added" -ForegroundColor Green
 }
@@ -138,7 +140,8 @@ try {
 # ============================================================
 Write-Host ""
 Write-Host "=== Step 5: Cleaning up deployer firewall rule ===" -ForegroundColor Cyan
-az sql server firewall-rule delete --resource-group rg-sre-demo --server $sqlServerName `
+$rgName = $env:AZURE_RESOURCE_GROUP ?? "rg-$($env:AZURE_ENV_NAME)"
+az sql server firewall-rule delete --resource-group $rgName --server $sqlServerName `
     --name postprovision-deployer -o none 2>$null
 Write-Host "  [done] Firewall rule removed" -ForegroundColor Green
 

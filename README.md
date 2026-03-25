@@ -68,11 +68,9 @@ azd init
 # Required: Set your target subscription and region
 azd env set AZURE_SUBSCRIPTION_ID "<your-subscription-id>"
 azd env set AZURE_LOCATION "eastus2"
-
-# Required: SQL AAD admin identity (used by main.parameters.json)
-azd env set AZURE_PRINCIPAL_ID "$(az ad signed-in-user show --query id -o tsv)"
-azd env set AZURE_AAD_ADMIN_LOGIN "$(az ad signed-in-user show --query userPrincipalName -o tsv)"
 ```
+
+> **Note:** SQL Entra admin identity is auto-detected from your `az login` session via a preprovision hook — no manual setup needed.
 
 #### Provision infrastructure only
 
@@ -141,12 +139,10 @@ azd auth login --tenant-id "$(az account show --query tenantId -o tsv)"
 
 azd init
 azd env set AZURE_LOCATION "eastus2"
-azd env set AZURE_PRINCIPAL_ID "$(az ad signed-in-user show --query id -o tsv)"
-azd env set AZURE_AAD_ADMIN_LOGIN "$(az ad signed-in-user show --query userPrincipalName -o tsv)"
 azd up
 ```
 
-The `postprovision` hook seeds the SQL database and stores demo user passwords in Key Vault. The `postup` hook prints the web app URL and admin credentials.
+The `preprovision` hook auto-detects your identity for SQL Entra admin. The `postprovision` hook seeds the SQL database, grants the web app managed identity `db_owner`, and stores demo user passwords in Key Vault. The `postup` hook prints the web app URL and admin credentials.
 
 ---
 
