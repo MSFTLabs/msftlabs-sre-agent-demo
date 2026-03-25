@@ -34,26 +34,123 @@ The demo uses a single, clear incident flow:
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
 - [Python 3.11](https://www.python.org/downloads/)
 
-## Quick Start
+## Getting Started
 
-### 1. Fork and Clone
+### Prerequisites
+
+Ensure you are logged in to both CLIs (they use **separate** credential stores):
 
 ```powershell
-git clone https://github.com/<your-org>/msftlabs-sre-agent-demo.git
-cd msftlabs-sre-agent-demo
+# Azure CLI login
+az login
+az account set --subscription "<your-subscription-id>"
+
+# Azure Developer CLI login (must match the same tenant)
+azd auth login --tenant-id "<your-tenant-id>"
 ```
 
-### 2. Deploy
+> **Tip:** Get your tenant ID with `az account show --query tenantId -o tsv`
 
-```bash
-azd init              # Environment name: sre-demo
-azd env set AZURE_LOCATION "centralus"
-azd env set sqlAadAdminObjectId "$(az ad signed-in-user show --query id -o tsv)"
-azd env set sqlAadAdminLogin "$(az ad signed-in-user show --query userPrincipalName -o tsv)"
+---
+
+### AZD Command Reference
+
+#### Initialize a new environment
+
+```powershell
+azd init
+# Follow the prompts — choose an environment name (e.g., sre-demo)
+```
+
+#### Configure environment variables
+
+```powershell
+# Required: Set your target subscription and region
+azd env set AZURE_SUBSCRIPTION_ID "<your-subscription-id>"
+azd env set AZURE_LOCATION "eastus2"
+
+# Required: SQL AAD admin identity (used by main.parameters.json)
+azd env set AZURE_PRINCIPAL_ID "$(az ad signed-in-user show --query id -o tsv)"
+azd env set AZURE_AAD_ADMIN_LOGIN "$(az ad signed-in-user show --query userPrincipalName -o tsv)"
+```
+
+#### Provision infrastructure only
+
+```powershell
+azd provision          # Deploys Bicep templates, runs postprovision.ps1 hook
+```
+
+#### Deploy application code only
+
+```powershell
+azd deploy             # Builds & deploys src/web (.NET) and src/api (Python)
+azd deploy web         # Deploy only the web service
+azd deploy api         # Deploy only the function app
+```
+
+#### Provision + deploy in one step
+
+```powershell
+azd up                 # Equivalent to: azd provision + azd deploy + postup hook
+```
+
+#### View / switch environments
+
+```powershell
+azd env list                          # List all environments
+azd env select <env-name>            # Switch active environment
+azd env get-values                    # Show all env variables for current environment
+azd env set <KEY> "<VALUE>"           # Set a variable
+azd env new <env-name>               # Create a new environment
+```
+
+#### Monitor and troubleshoot
+
+```powershell
+azd monitor --overview                # Open Application Insights overview
+azd monitor --live                    # Open live metrics stream
+azd monitor --logs                    # Open Log Analytics logs
+```
+
+#### Tear down
+
+```powershell
+azd down                              # Delete all Azure resources for the environment
+azd down --purge                      # Also purge soft-deleted Key Vaults & App Configs
+```
+
+#### Other useful commands
+
+```powershell
+azd env refresh                       # Re-fetch outputs from the latest deployment
+azd config show                       # Show global azd configuration
+azd config set defaults.subscription "<subscription-id>"   # Set default subscription
+azd config set defaults.location "eastus2"                 # Set default location
+```
+
+---
+
+### Quick Deploy (copy-paste)
+
+```powershell
+git clone https://github.com/MSFTLabs/msftlabs-sre-agent-demo.git
+cd msftlabs-sre-agent-demo
+
+az login
+azd auth login --tenant-id "$(az account show --query tenantId -o tsv)"
+
+azd init
+azd env set AZURE_LOCATION "eastus2"
+azd env set AZURE_PRINCIPAL_ID "$(az ad signed-in-user show --query id -o tsv)"
+azd env set AZURE_AAD_ADMIN_LOGIN "$(az ad signed-in-user show --query userPrincipalName -o tsv)"
 azd up
 ```
 
-### 3. Configure SRE Agent
+The `postprovision` hook seeds the SQL database and stores demo user passwords in Key Vault. The `postup` hook prints the web app URL and admin credentials.
+
+---
+
+### Configure SRE Agent
 
 1. Go to [https://sre.azure.com](https://sre.azure.com) and create an agent
 2. Add `rg-sre-demo` as a managed resource group
@@ -61,7 +158,7 @@ azd up
 4. Create a subagent (e.g., `sre-investigator`)
 5. Create an incident response plan → connect it to the subagent
 
-### 4. Run the Demo
+### Run the Demo
 
 1. Log into the web app as admin
 2. Go to the **Admin** page
