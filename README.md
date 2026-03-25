@@ -63,12 +63,12 @@ azd init
 #### Configure environment variables
 
 ```powershell
-# Required: Set your target subscription and region
-azd env set AZURE_SUBSCRIPTION_ID "<your-subscription-id>"
+# Required: Pin subscription from your current az CLI context and set region
+azd env set AZURE_SUBSCRIPTION_ID "$(az account show --query id -o tsv)"
 azd env set AZURE_LOCATION "eastus2"
 ```
 
-> **Note:** SQL Entra admin identity is auto-detected from your `az login` session via a preprovision hook — no manual setup needed.
+> **Note:** SQL Entra admin identity is auto-detected from your `az login` session by the postprovision hook — no manual setup needed.
 
 #### Provision infrastructure only
 
@@ -136,11 +136,12 @@ az login
 azd auth login --tenant-id "$(az account show --query tenantId -o tsv)"
 
 azd init
+azd env set AZURE_SUBSCRIPTION_ID "$(az account show --query id -o tsv)"
 azd env set AZURE_LOCATION "eastus2"
 azd up
 ```
 
-The `preprovision` hook auto-detects your identity for SQL Entra admin. The `postprovision` hook seeds the SQL database, grants the web app managed identity `db_owner`, and stores demo user passwords in Key Vault. The `postup` hook prints the web app URL and admin credentials.
+The `postprovision` hook auto-detects your identity, sets SQL Entra-only admin, grants the web app managed identity `db_owner`, seeds the database, and stores demo user passwords in Key Vault. The `postup` hook prints the web app URL and admin credentials.
 
 ---
 
