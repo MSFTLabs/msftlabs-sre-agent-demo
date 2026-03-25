@@ -7,6 +7,24 @@ import os
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 
 
+def _get_param(req: func.HttpRequest, name: str, default: str = "") -> str:
+    """Read a parameter from query string first, then fall back to JSON body."""
+    val = req.params.get(name)
+    if val:
+        return val
+    try:
+        body = req.get_json()
+        # Support both snake_case and original key names
+        if name in body:
+            return str(body[name])
+        snake = name.replace("-", "_")
+        if snake in body:
+            return str(body[snake])
+    except (ValueError, AttributeError):
+        pass
+    return default
+
+
 @app.route(route="health", methods=["GET"])
 def health_check(req: func.HttpRequest) -> func.HttpResponse:
     """Health check endpoint."""
@@ -20,7 +38,7 @@ def health_check(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="trigger-exception", methods=["POST"])
 def trigger_exception(req: func.HttpRequest) -> func.HttpResponse:
     """Generates unhandled exceptions for SRE Agent to detect."""
-    exception_type = req.params.get("type", "general")
+    exception_type = _get_param(req, "type", "general")
 
     logging.warning("Exception trigger requested: type=%s", exception_type)
 
@@ -46,7 +64,7 @@ def trigger_exception(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="trigger-slow-response", methods=["POST"])
 def trigger_slow_response(req: func.HttpRequest) -> func.HttpResponse:
     """Creates artificially slow responses for SRE Agent to detect."""
-    delay = min(int(req.params.get("delay", "10")), 230)
+    delay = min(int(_get_param(req, "delay", "10") or _get_param(req, "delay_seconds", "10")), 230)
 
     logging.warning("Slow response triggered: %d seconds", delay)
     time.sleep(delay)
@@ -61,7 +79,7 @@ def trigger_slow_response(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="trigger-memory-leak", methods=["POST"])
 def trigger_memory_leak(req: func.HttpRequest) -> func.HttpResponse:
     """Allocates memory to simulate memory pressure."""
-    size_mb = min(int(req.params.get("size", "100")), 500)
+    size_mb = min(int(_get_param(req, "size", "100") or _get_param(req, "size_mb", "100")), 500)
 
     logging.warning("Memory allocation triggered: %d MB", size_mb)
     # Allocate memory blocks
@@ -77,7 +95,7 @@ def trigger_memory_leak(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="trigger-cpu-spike", methods=["POST"])
 def trigger_cpu_spike(req: func.HttpRequest) -> func.HttpResponse:
     """Generates CPU-intensive work for SRE Agent to detect."""
-    duration = min(int(req.params.get("duration", "10")), 60)
+    duration = min(int(_get_param(req, "duration", "10") or _get_param(req, "duration_seconds", "10")), 60)
 
     logging.warning("CPU spike triggered: %d seconds", duration)
     end_time = time.time() + duration
@@ -122,7 +140,7 @@ def trigger_dependency_failure(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="trigger-error-storm", methods=["POST"])
 def trigger_error_storm(req: func.HttpRequest) -> func.HttpResponse:
     """Generates a burst of error log entries for SRE Agent to detect."""
-    count = min(int(req.params.get("count", "50")), 200)
+    count = min(int(_get_param(req, "count", "50")), 200)
 
     logging.warning("Error storm triggered: %d errors", count)
 
@@ -146,8 +164,8 @@ def trigger_error_storm(req: func.HttpRequest) -> func.HttpResponse:
 @app.route(route="trigger-log-flood", methods=["POST"])
 def trigger_log_flood(req: func.HttpRequest) -> func.HttpResponse:
     """Floods logs with high volume entries to test log analytics."""
-    count = min(int(req.params.get("count", "1000")), 5000)
-    level = req.params.get("level", "warning")
+    count = min(int(_get_param(req, "count", "1000")), 5000)
+    level = _get_param(req, "level", "warning")
 
     log_func = getattr(logging, level, logging.warning)
 

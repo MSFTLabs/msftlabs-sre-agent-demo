@@ -28,6 +28,9 @@ param sqlServerName string
 @description('Application Gateway URL')
 param appGatewayUrl string
 
+@description('Web App URL for CORS')
+param webAppUrl string
+
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: storageAccountName
   location: location
@@ -71,6 +74,12 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         { name: 'SQL_SERVER_NAME', value: sqlServerName }
         { name: 'APP_GATEWAY_URL', value: appGatewayUrl }
       ]
+      cors: {
+        allowedOrigins: [
+          webAppUrl
+        ]
+        supportCredentials: false
+      }
     }
   }
 }

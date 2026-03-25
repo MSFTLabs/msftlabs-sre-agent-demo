@@ -1,147 +1,30 @@
 @{
-    ViewData["Title"] = "Admin - Chaos Triggers";
-    var functionAppUrl = ViewBag.FunctionAppUrl as string ?? "";
+    ViewData["Title"] = "Admin - SRE Agent Demo";
 }
 
-<h2 class="mb-4">Chaos Engineering Triggers</h2>
-<p class="text-muted">Use these controls to inject faults into the demo environment. Each trigger calls the Function App chaos API and generates telemetry for Azure SRE Agent to detect and diagnose.</p>
-
-@if (string.IsNullOrEmpty(functionAppUrl))
-{
-    <div class="alert alert-warning">
-        <strong>FunctionAppUrl not configured.</strong> Set the <code>FunctionAppUrl</code> app setting to enable chaos triggers. Buttons will POST to relative paths which require the Function App URL.
-    </div>
-}
+<h2 class="mb-4">SRE Agent Demo &mdash; Incident Trigger</h2>
+<p class="text-muted">Simulate a SQL injection attack against the Application Gateway WAF. The WAF blocks the malicious requests, generating firewall logs and triggering Azure Monitor alerts that the SRE Agent automatically investigates.</p>
 
 <div id="statusAlert" class="alert d-none" role="alert"></div>
 
-<div class="row g-4 mt-2">
-    <div class="col-md-6 col-lg-4">
-        <div class="card h-100 border-danger">
-            <div class="card-header bg-danger text-white">Application Errors</div>
-            <div class="card-body">
-                <p class="card-text">Trigger unhandled exceptions to test Application Insights exception tracking and alerting.</p>
-                <button class="btn btn-outline-danger w-100 chaos-btn" data-endpoint="trigger-exception" data-body='{"type":"NullReference"}'>
-                    <i class="bi bi-bug me-1"></i>Trigger Exception
-                </button>
+<div class="row justify-content-center mt-4">
+    <div class="col-md-8 col-lg-6">
+        <div class="card border-danger shadow">
+            <div class="card-header bg-danger text-white text-center fs-5">
+                <i class="bi bi-shield-exclamation me-2"></i>SQL Injection Attack Simulation
             </div>
-        </div>
-    </div>
-    <div class="col-md-6 col-lg-4">
-        <div class="card h-100 border-warning">
-            <div class="card-header bg-warning">Performance Degradation</div>
-            <div class="card-body">
-                <p class="card-text">Inject artificial latency to test slow-response detection and performance alerts.</p>
-                <button class="btn btn-outline-warning w-100 chaos-btn" data-endpoint="trigger-slow-response" data-body='{"delay_seconds":10}'>
-                    <i class="bi bi-hourglass-split me-1"></i>Trigger Slow Response
-                </button>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6 col-lg-4">
-        <div class="card h-100 border-danger">
-            <div class="card-header bg-danger text-white">Resource Exhaustion</div>
-            <div class="card-body">
-                <p class="card-text">Allocate large memory blocks to simulate memory leaks and resource pressure.</p>
-                <button class="btn btn-outline-danger w-100 chaos-btn" data-endpoint="trigger-memory-leak" data-body='{"size_mb":50}'>
-                    <i class="bi bi-memory me-1"></i>Trigger Memory Leak
-                </button>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6 col-lg-4">
-        <div class="card h-100 border-warning">
-            <div class="card-header bg-warning">CPU Saturation</div>
-            <div class="card-body">
-                <p class="card-text">Generate CPU-intensive workloads to test compute scaling and performance degradation.</p>
-                <button class="btn btn-outline-warning w-100 chaos-btn" data-endpoint="trigger-cpu-spike" data-body='{"duration_seconds":15}'>
-                    <i class="bi bi-cpu me-1"></i>Trigger CPU Spike
-                </button>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6 col-lg-4">
-        <div class="card h-100 border-danger">
-            <div class="card-header bg-danger text-white">Dependency Failure</div>
-            <div class="card-body">
-                <p class="card-text">Simulate downstream service unavailability to validate circuit breaker detection.</p>
-                <button class="btn btn-outline-danger w-100 chaos-btn" data-endpoint="trigger-dependency-failure">
-                    <i class="bi bi-link-45deg me-1"></i>Trigger Dependency Failure
-                </button>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6 col-lg-4">
-        <div class="card h-100 border-warning">
-            <div class="card-header bg-warning">Log Flood</div>
-            <div class="card-body">
-                <p class="card-text">Produce a burst of error log entries to test log pipeline capacity and anomaly detection.</p>
-                <button class="btn btn-outline-warning w-100 chaos-btn" data-endpoint="trigger-log-flood" data-body='{"count":100}'>
-                    <i class="bi bi-file-earmark-text me-1"></i>Trigger Log Flood
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<h3 class="mt-5 mb-3">Access Control Chaos</h3>
-<p class="text-muted">These actions modify Azure RBAC role assignments. Use Revoke to break access, then Restore to repair it.</p>
-
-<div class="row g-4">
-    <div class="col-md-6">
-        <div class="card h-100 border-dark">
-            <div class="card-header bg-dark text-white">Key Vault Access</div>
-            <div class="card-body">
-                <p class="card-text">Revoke or restore the web app managed identity's Key Vault Secrets User role assignment.</p>
-                <div class="d-flex gap-2">
-                    <button class="btn btn-danger flex-fill chaos-btn" data-endpoint="revoke-keyvault-access">
-                        <i class="bi bi-lock me-1"></i>Revoke
-                    </button>
-                    <button class="btn btn-success flex-fill chaos-btn" data-endpoint="restore-keyvault-access">
-                        <i class="bi bi-unlock me-1"></i>Restore
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="card h-100 border-dark">
-            <div class="card-header bg-dark text-white">SQL Database Access</div>
-            <div class="card-body">
-                <p class="card-text">Revoke or restore the web app managed identity's SQL Contributor role assignment.</p>
-                <div class="d-flex gap-2">
-                    <button class="btn btn-danger flex-fill chaos-btn" data-endpoint="revoke-sql-access">
-                        <i class="bi bi-lock me-1"></i>Revoke
-                    </button>
-                    <button class="btn btn-success flex-fill chaos-btn" data-endpoint="restore-sql-access">
-                        <i class="bi bi-unlock me-1"></i>Restore
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<h3 class="mt-5 mb-3">WAF Testing</h3>
-<div class="row g-4">
-    <div class="col-md-6">
-        <div class="card h-100 border-info">
-            <div class="card-header bg-info text-white">SQL Injection via WAF</div>
-            <div class="card-body">
-                <p class="card-text">Send SQL injection patterns through the Application Gateway to validate WAF blocking and log generation.</p>
-                <button class="btn btn-outline-info w-100 chaos-btn" data-endpoint="trigger-waf-sql-injection">
-                    <i class="bi bi-shield-exclamation me-1"></i>Trigger WAF SQL Injection Test
-                </button>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="card h-100 border-info">
-            <div class="card-header bg-info text-white">Error Storm</div>
-            <div class="card-body">
-                <p class="card-text">Generate a rapid burst of errors across multiple categories to stress test monitoring and alerting.</p>
-                <button class="btn btn-outline-info w-100 chaos-btn" data-endpoint="trigger-error-storm" data-body='{"count":50}'>
-                    <i class="bi bi-lightning me-1"></i>Trigger Error Storm
+            <div class="card-body text-center p-4">
+                <p class="card-text mb-2">This sends SQL injection patterns through the Application Gateway. The WAF (OWASP 3.2 Prevention mode) blocks the requests, generating firewall logs and triggering Azure Monitor alerts.</p>
+                <hr />
+                <p class="card-text text-muted small mb-3">
+                    <strong>What happens:</strong><br/>
+                    1. SQL injection payloads sent to App Gateway<br/>
+                    2. WAF blocks requests (HTTP 403)<br/>
+                    3. <em>WAF Blocked Requests</em> alert fires (Sev 2)<br/>
+                    4. SRE Agent picks up the incident and investigates
+                </p>
+                <button id="triggerBtn" class="btn btn-danger btn-lg w-100">
+                    <i class="bi bi-shield-exclamation me-2"></i>Trigger SQL Injection Attack
                 </button>
             </div>
         </div>
@@ -150,41 +33,53 @@
 
 @section Scripts {
 <script>
-    document.querySelectorAll('.chaos-btn').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var endpoint = this.getAttribute('data-endpoint');
-            var body = this.getAttribute('data-body') || '{}';
-            var baseUrl = '@Html.Raw(functionAppUrl)';
-            var url = baseUrl ? baseUrl.replace(/\/+$/, '') + '/api/' + endpoint : '/api/' + endpoint;
-            var alert = document.getElementById('statusAlert');
+    document.getElementById('triggerBtn').addEventListener('click', function () {
+        var btn = this;
+        var alertEl = document.getElementById('statusAlert');
+        var originalHtml = btn.innerHTML;
 
-            btn.disabled = true;
-            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Running...';
 
-            fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: body
-            })
-            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
-            .then(function (result) {
-                alert.className = result.ok ? 'alert alert-success' : 'alert alert-warning';
-                alert.textContent = endpoint + ': ' + (result.data.message || JSON.stringify(result.data));
-                alert.classList.remove('d-none');
-            })
-            .catch(function (err) {
-                alert.className = 'alert alert-danger';
-                alert.textContent = endpoint + ' failed: ' + err.message;
-                alert.classList.remove('d-none');
-            })
-            .finally(function () {
-                btn.disabled = false;
-                btn.innerHTML = btn.getAttribute('data-original-html') || btn.textContent;
-                location.href = '#statusAlert';
+        fetch('@Url.Action("TriggerSqlInjection", "Admin")', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]')?.value || ''
+            }
+        })
+        .then(function (r) {
+            return r.text().then(function (txt) {
+                try { var d = JSON.parse(txt); } catch (_) { d = { message: r.ok ? 'Done' : 'Error ' + r.status }; }
+                return { ok: r.ok, data: d };
             });
-
-            btn.setAttribute('data-original-html', btn.innerHTML);
+        })
+        .then(function (result) {
+            var d = result.data;
+            if (result.ok && d.blockedCount !== undefined) {
+                alertEl.className = 'alert alert-success';
+                alertEl.textContent = 'SQL injection test complete: ' + d.blockedCount + '/' + d.totalPatterns + ' patterns blocked by WAF. Alert should fire within ~2 minutes.';
+            } else if (d.error) {
+                alertEl.className = 'alert alert-warning';
+                alertEl.textContent = 'Error: ' + d.error;
+            } else {
+                alertEl.className = result.ok ? 'alert alert-success' : 'alert alert-warning';
+                alertEl.textContent = JSON.stringify(d);
+            }
+            alertEl.classList.remove('d-none');
+        })
+        .catch(function (err) {
+            alertEl.className = 'alert alert-danger';
+            alertEl.textContent = 'Request failed: ' + err.message;
+            alertEl.classList.remove('d-none');
+        })
+        .finally(function () {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+            location.href = '#statusAlert';
         });
     });
 </script>
 }
+
+@Html.AntiForgeryToken()

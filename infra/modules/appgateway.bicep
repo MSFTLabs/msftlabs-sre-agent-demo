@@ -222,6 +222,7 @@ resource appGatewayDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01
 }
 
 output appGatewayName string = appGateway.name
+output appGatewayId string = appGateway.id
 output appGatewayPublicIp string = publicIp.properties.ipAddress
 output appGatewayFqdn string = publicIp.properties.dnsSettings.fqdn
 output vnetName string = vnet.name

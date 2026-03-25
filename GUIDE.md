@@ -1,6 +1,6 @@
 # Azure SRE Agent -- Demo Guide
 
-Step-by-step walkthrough for deploying the MSFTLabs SRE Demo environment, configuring Azure SRE Agent in the Azure Portal, and running each chaos scenario live.
+Step-by-step walkthrough for deploying the MSFTLabs SRE Demo environment, configuring Azure SRE Agent, and running the SQL injection incident demo.
 
 ---
 
@@ -42,7 +42,7 @@ When prompted, provide:
 ### 2.2 Set Required Parameters
 
 ```bash
-azd env set AZURE_LOCATION "eastus2"
+azd env set AZURE_LOCATION "centralus"
 azd env set sqlAadAdminObjectId "$(az ad signed-in-user show --query id -o tsv)"
 azd env set sqlAadAdminLogin "$(az ad signed-in-user show --query userPrincipalName -o tsv)"
 ```
@@ -54,10 +54,12 @@ azd up
 ```
 
 This single command:
-1. Provisions all Azure resources via Bicep (App Service, SQL, Key Vault, Function App, Application Gateway with WAF, Log Analytics, Application Insights).
+1. Provisions all Azure resources via Bicep (App Service, Application Gateway with WAF, SQL, Key Vault, Function App, Log Analytics, Application Insights, alert rules).
 2. Runs `scripts/postprovision.ps1` which generates random passwords for all 11 demo users, stores them in Key Vault, grants the Web App managed identity SQL access, and seeds the database.
 3. Deploys the .NET web app and the Python Function App.
 4. Runs `scripts/postup.ps1` which displays the Web App URL, Application Gateway URL, and admin credentials.
+
+> **Note:** You may see `RoleAssignmentExists` errors on re-deployment — these are safe to ignore.
 
 ### 2.4 Verify Deployment
 
@@ -69,7 +71,7 @@ After `azd up` completes, you will see output like:
 ==========================================
 
   Web App URL:       https://app-xxxxxxxxxx.azurewebsites.net
-  App Gateway URL:   http://agw-xxxxxxxxxx.eastus2.cloudapp.azure.com
+  App Gateway URL:   http://agw-xxxxxxxxxx.centralus.cloudapp.azure.com
 
   Admin Login
   ───────────────────────────
@@ -82,7 +84,7 @@ Open the **Web App URL** in a browser and log in with the admin credentials to c
 
 ### 2.5 Verify Health
 
-Navigate to `/Health/Probe` on the Web App. Confirm all three checks are green:
+Navigate to `/Health/Probe` on the Web App. Confirm all checks are green:
 - **Managed Identity / Key Vault**: Connected
 - **SQL Database**: Connected
 - **Function App API**: Healthy
@@ -91,163 +93,229 @@ Navigate to `/Health/Probe` on the Web App. Confirm all three checks are green:
 
 ## Step 3: Configure Azure SRE Agent
 
-### 3.1 Navigate to SRE Agent in the Portal
+After `azd up` completes, the demo infrastructure is deployed but SRE Agent is not yet connected. This section walks through every click needed to wire SRE Agent to the demo environment so it can detect and investigate the WAF SQL injection alerts.
 
-1. Go to the [Azure Portal](https://portal.azure.com).
-2. Search for **"SRE Agent"** in the top search bar, or navigate to it from your subscription or resource group.
-3. If SRE Agent is not yet available in your subscription, you may need to register the preview via **Preview Features** or request access.
+### 3.1 Create the SRE Agent
 
-### 3.2 Create a New SRE Agent Configuration
+1. Open [https://sre.azure.com](https://sre.azure.com) in your browser.
+2. Click **+ Create** in the top-left.
+3. Fill in:
+   - **Name**: `sre-agent-demo` (or any descriptive name).
+   - **Subscription**: Select the subscription where you deployed (the same one used with `azd up`).
+4. Click **Create**. You will be taken to the agent's **Builder** canvas.
 
-1. Click **+ Create** or **Configure SRE Agent**.
-2. **Scope**: Select the subscription and resource group (`rg-{environmentName}`) that contains the demo resources.
-3. **Monitoring Sources**: Ensure the following are connected:
-   - **Application Insights**: Select the `appi-{resourceToken}` instance.
-   - **Log Analytics Workspace**: Select the `log-{resourceToken}` instance.
-4. **Resources to Monitor**: Select all resources in the resource group, or specifically:
-   - Web App (`app-{resourceToken}`)
-   - Function App (`func-{resourceToken}`)
-   - SQL Server (`sql-{resourceToken}`)
-   - Key Vault (`kv-{resourceToken}`)
-   - Application Gateway (`agw-{resourceToken}`)
+### 3.2 Add the Demo Resource Group as a Managed Resource
 
-### 3.3 Upload Knowledge Files
+The SRE Agent needs explicit access to the resource group containing your demo resources. This step grants the agent's managed identity the necessary RBAC roles (Reader, Monitoring Reader, etc.) on the resource group.
 
-1. In the SRE Agent configuration, find the **Knowledge Files** section.
-2. Upload the file from this repository: `knowledgeFiles/application-architecture.md`
-3. This gives the SRE Agent full context about the application architecture, expected behavior, chaos endpoints, error signatures, and relevant KQL queries.
+1. In the SRE Agent portal, click **Settings** (gear icon in the left sidebar).
+2. Click the **Managed resources** tab.
+3. Click the **Resource groups** sub-tab.
+4. Click **+ Add resource group**.
+5. In the picker, find and select your demo resource group:
+   - If you used `sre-demo` as the environment name: select `rg-sre-demo`.
+   - General pattern: `rg-{environmentName}`.
+6. Click **Add**. The portal will assign the required RBAC roles to the agent's managed identity.
 
-### 3.4 Configure Alert Rules (if applicable)
+> **Troubleshooting: Resource group not appearing in the picker?**
+>
+> The picker only shows resource groups where your signed-in user has **direct Owner** or **User Access Administrator** role — roles inherited from a management group are not sufficient. The Bicep deployment includes `infra/modules/deployer-rg-owner.bicep` which assigns Owner to the deployer at the resource group level. If this didn't take effect (e.g., you skipped provisioning), assign it manually:
+> ```bash
+> az role assignment create \
+>   --assignee "$(az ad signed-in-user show --query id -o tsv)" \
+>   --role "Owner" \
+>   --scope "/subscriptions/{subscriptionId}/resourceGroups/rg-sre-demo"
+> ```
 
-Depending on SRE Agent's current capabilities, configure or verify:
-- **Exception rate threshold**: Alert when `exceptions` count exceeds normal baseline.
-- **Dependency failure rate**: Alert on failed SQL or Key Vault dependencies.
-- **WAF block events**: Alert on `ApplicationGatewayFirewallLog` blocked entries.
-- **Health probe failures**: Alert when backend health drops below 100%.
+### 3.3 Verify the Incident Platform (Azure Monitor)
 
-### 3.5 Validate SRE Agent Connection
+The incident platform tells SRE Agent where to listen for incoming alerts. Azure Monitor is configured by default.
 
-Give the agent a few minutes to ingest baseline telemetry. Verify in the SRE Agent dashboard that it shows the monitored resources and is receiving data from Application Insights and Log Analytics.
+1. In the left sidebar, click **Builder**.
+2. Click the **Incident platform** tab (next to "Canvas" and "Knowledge").
+3. Confirm **Azure Monitor** shows as **Connected**.
+   - If not connected, click **Connect** and authorize access to your subscription.
+
+This is how SRE Agent receives the `alert-waf-blocked-requests` and `alert-appgw-unhealthy-backend` alerts that the Bicep deployment created.
+
+### 3.4 Upload the Knowledge File
+
+The knowledge file gives the agent deep context about your specific environment — resource names, architecture, alert rules, expected error signatures, and KQL queries it can use during investigations.
+
+1. In the **Builder** view, click the **Knowledge** tab.
+2. Click **+ Add knowledge source** > **Upload file**.
+3. Select the file `knowledgeFiles/application-architecture.md` from your local clone.
+4. Wait for the upload to complete (a green checkmark appears).
+
+**What the knowledge file contains:**
+- Full resource inventory (Web App, Function App, SQL, Key Vault, App Gateway, Log Analytics, App Insights) with naming patterns.
+- Database schema (Users, SitePages tables).
+- RBAC role assignments for each managed identity.
+- All six alert rule definitions and their KQL queries.
+- Chaos scenario playbooks — especially the **WAF SQL Injection** scenario marked as the primary demo.
+- KQL query templates the agent can use (WAF blocked requests, failed dependencies, exceptions, Key Vault audit events).
+- Architecture diagram showing the attack flow: Web App → App Gateway WAF → Blocked → Log Analytics → Alert → SRE Agent.
+
+### 3.5 Create the Investigation Subagent
+
+A subagent is the AI persona that actually performs the investigation when an incident arrives. You need at least one subagent before you can create an incident response plan.
+
+1. Go to **Builder** > **Canvas** tab.
+2. Click **+ Create subagent** (or **+ Create** > **Subagent**).
+3. Configure the subagent:
+
+   | Field | Value |
+   |---|---|
+   | **Name** | `sre-investigator` |
+   | **Instructions** | See below |
+
+   **Instructions** (paste this into the Instructions field):
+   ```
+   You are an SRE investigator for the MSFTLabs SRE Demo environment.
+
+   When an Azure Monitor alert fires, investigate it using these steps:
+   1. Read the alert details to understand which rule fired and at what severity.
+   2. For WAF alerts (alert-waf-blocked-requests): Query ApplicationGatewayFirewallLog in Log Analytics to find blocked requests. Identify the OWASP rule IDs that matched, the request URIs, and the source IPs. Classify this as a security event — the WAF is correctly blocking malicious traffic. The web application backend should remain healthy.
+   3. For backend health alerts (alert-appgw-unhealthy-backend): Check the Application Gateway backend health metrics and the Web App health probe at /Health/Probe. Investigate whether the root cause is a Key Vault access failure, SQL connectivity issue, or application crash by checking Application Insights exceptions and dependencies.
+   4. Check Application Insights for correlated exceptions, failed dependencies, and request failures in the same time window.
+   5. Provide a root cause analysis with evidence (specific log entries, metric values, timeline).
+   6. Recommend remediation steps.
+
+   Key resources in this environment:
+   - Web App: app-{resourceToken} (.NET 8 on Linux App Service)
+   - Application Gateway: agw-{resourceToken} (WAF_v2, OWASP 3.2 Prevention mode)
+   - SQL Database: sql-{resourceToken}/sredemodb (Entra-only auth)
+   - Key Vault: kv-{resourceToken} (RBAC authorization)
+   - Application Insights: appi-{resourceToken}
+   - Log Analytics Workspace: log-{resourceToken}
+
+   Useful KQL queries:
+   - WAF blocks: AzureDiagnostics | where Category == "ApplicationGatewayFirewallLog" | where action_s == "Blocked"
+   - Exceptions: exceptions | where timestamp > ago(1h) | summarize count() by type, outerMessage
+   - Failed deps: dependencies | where success == false | summarize count() by target, type, resultCode
+   ```
+
+4. **Tools and Skills**: Leave the default tool set or verify the agent has access to:
+   - Azure Monitor (queries, metrics, alerts)
+   - Log Analytics (KQL queries)
+   - Application Insights (exceptions, dependencies, requests)
+   - Azure Resource Manager (resource health, configuration)
+5. Click **Save**.
+
+### 3.6 Create the Incident Response Plan
+
+The incident response plan is the trigger that connects Azure Monitor alerts to your subagent. When an alert fires and matches the plan's filter criteria, SRE Agent creates an incident and dispatches the subagent to investigate.
+
+1. In the **Builder** > **Canvas** view, click **+ Create** > **Trigger** > **Incident response plan**.
+2. Configure the plan:
+
+   | Field | Value | Notes |
+   |---|---|---|
+   | **Name** | `waf-alert-handler` | Descriptive name for the plan |
+   | **Severity** | `All severity` | Catches both Sev 1 (backend health) and Sev 2 (WAF blocks) |
+   | **Title contains** | *(leave blank)* | Blank = matches all alert titles. Alternatively enter `SRE Demo` to match only this demo's alerts, which are all prefixed "SRE Demo:" |
+   | **Response subagent** | `sre-investigator` | The subagent you created in 3.5 |
+   | **Agent autonomy level** | `Autonomous (Default)` | The agent investigates without asking for approval |
+
+3. Click **Next**.
+4. The **Preview** page may show **"No matching alerts found"** — this is normal. The preview only shows alerts that are currently active. Your trigger will still work for future alerts.
+5. Click **Create**.
+
+### 3.7 Verify the Canvas
+
+After completing steps 3.5 and 3.6, the **Builder** > **Canvas** should show:
+
+```
+┌─────────────────────────┐         ┌─────────────────────┐
+│  Incident Response Plan │  ────>  │   sre-investigator  │
+│  waf-alert-handler      │         │   (Subagent)        │
+│  All severity, On       │         │                     │
+└─────────────────────────┘         └─────────────────────┘
+```
+
+The incident response plan node connects to the subagent node with an arrow. The plan status should show **"On"**.
+
+### 3.8 Understand the Alert-to-Incident Flow
+
+Here is what happens end-to-end when you trigger the demo:
+
+```
+Admin page "Trigger SQL Injection Attack" button
+    │
+    ▼
+Web App sends 5 SQL injection patterns to App Gateway URL
+    │
+    ▼
+Application Gateway WAF blocks requests (HTTP 403)
+    │
+    ▼
+WAF logs written to Log Analytics (ApplicationGatewayFirewallLog)
+    │
+    ▼  (~1 minute)
+Azure Monitor alert rule "alert-waf-blocked-requests" evaluates:
+    KQL: AzureDiagnostics | where Category == "ApplicationGatewayFirewallLog"
+                          | where action_s == "Blocked"
+    Threshold: count > 1 in 5-minute window
+    │
+    ▼
+Alert fires (Severity 2, title "SRE Demo: WAF Blocked Requests Detected")
+    │
+    ▼
+SRE Agent incident response plan "waf-alert-handler" matches (All severity)
+    │
+    ▼
+SRE Agent creates Incident, dispatches "sre-investigator" subagent
+    │
+    ▼
+Subagent queries Log Analytics for WAF logs, checks App Gateway metrics,
+reviews Application Insights telemetry, and produces root cause analysis
+```
+
+The total time from button click to incident appearing in the SRE Agent portal is typically **1–3 minutes** (one alert evaluation cycle of 1 minute, plus ingestion latency).
 
 ---
 
-## Step 4: Run the Demo -- Chaos Scenarios
+## Step 4: Run the Demo -- SQL Injection Incident
 
-### Before Each Scenario
+### Before the Demo
 
-1. Confirm the app is in a healthy state by checking `/Health/Probe`.
+1. Confirm the app is healthy at `/Health/Probe`.
 2. Log into the web app as admin.
-3. Navigate to the **Admin** page (hamburger menu > Admin).
-4. Keep the SRE Agent portal view open in a second browser tab.
+3. Open the SRE Agent portal ([https://sre.azure.com](https://sre.azure.com)) in a second browser tab, on the **Incidents** page.
 
----
+### Demo Flow
 
-### Demo 4.1: Key Vault Access Revocation
+| Step | Action | What to Show |
+|---|---|---|
+| 1 | Navigate to the **Admin** page in the web app. | Single "Trigger SQL Injection Attack" button. |
+| 2 | Click **"Trigger SQL Injection Attack"**. | The button sends SQL injection patterns through the Application Gateway. A success message shows how many patterns were blocked (e.g., "5/5 patterns blocked by WAF"). |
+| 3 | **Wait ~2 minutes** for the Azure Monitor alert evaluation cycle. | Explain that alerts evaluate every 1 minute with a 5-minute lookback window. |
+| 4 | Switch to the **SRE Agent Incidents** page. Click **Refresh**. | A new incident appears: "WAF Blocked Requests Detected" (Sev 2), status "In progress". |
+| 5 | Click the incident to open the investigation thread. | Show the agent's real-time analysis — it queries WAF logs, checks Application Gateway metrics, and identifies the OWASP rules that triggered. |
+| 6 | Wait for the agent to complete investigation. | The agent provides root cause analysis: WAF correctly blocked SQL injection attempts matching OWASP 3.2 rules. |
 
-**Narrative**: "What happens when the Web App's managed identity loses access to Key Vault?"
+### Key Talking Points
 
-| Step | Action |
-|---|---|
-| 1 | From the Admin page, click the **Revoke Key Vault Access** button (or `POST /api/revoke-keyvault-access` via the Function App). |
-| 2 | Show the audience the Integration page (`/Dashboard/Integration`) — Key Vault status now shows **Disconnected** with an access denied error. |
-| 3 | Show the Health Probe page (`/Health/Probe`) — Managed Identity check shows **Unhealthy**. |
-| 4 | Switch to SRE Agent in the portal. Point out how the agent detects the spike in Key Vault `AuthorizationFailed` events and Application Insights exceptions. |
-| 5 | Discuss what SRE Agent recommends: restoring the RBAC role assignment. |
-| 6 | **Restore**: From the Admin page, click **Restore Key Vault Access** (or `POST /api/restore-keyvault-access`). |
-| 7 | Refresh Integration and Health pages — both should return to healthy state. |
+- **Detection speed**: The agent picks up the incident within minutes of the alert firing.
+- **Root cause accuracy**: The agent correctly identifies WAF blocked requests as security events, not application failures.
+- **Signal correlation**: The agent correlates WAF firewall logs in Log Analytics with Application Gateway metrics and Application Insights telemetry.
+- **Autonomous investigation**: No human intervention needed — the agent acknowledges the alert, gathers evidence, and provides a summary.
 
-**What to look for in SRE Agent**:
-- Detection of `Azure.RequestFailedException` in exceptions telemetry.
-- Correlation with Key Vault `AuditEvent` access denied entries.
-- Recommendation to restore `Key Vault Secrets User` role assignment.
+### What to Look For in SRE Agent
 
----
-
-### Demo 4.2: SQL Database Access Revocation
-
-**Narrative**: "What happens when the Web App can no longer connect to the SQL database?"
-
-| Step | Action |
-|---|---|
-| 1 | From the Admin page, click **Revoke SQL Access** (or `POST /api/revoke-sql-access`). |
-| 2 | Try to navigate content pages or Dashboard — they will fail with 500 errors. |
-| 3 | Check `/Health/Probe` — SQL check shows **Unhealthy** with connection timeout. |
-| 4 | Switch to SRE Agent and observe detection of SQL connectivity failures. |
-| 5 | Show Application Insights `dependencies` tab — SQL dependency calls failing. |
-| 6 | **Restore**: Click **Restore SQL Access** (or `POST /api/restore-sql-access`). |
-| 7 | Verify recovery on the Health Probe page. |
-
-**What to look for in SRE Agent**:
-- Spike in `SqlException` entries in Application Insights.
-- Failed dependency tracking for SQL calls.
-- Recommendation to check SQL Server firewall rules.
-
----
-
-### Demo 4.3: WAF SQL Injection Detection
-
-**Narrative**: "What does SRE Agent see when SQL injection attempts hit the WAF?"
-
-| Step | Action |
-|---|---|
-| 1 | From the Admin page, click **Trigger WAF SQL Injection** (or `POST /api/trigger-waf-sql-injection`). |
-| 2 | The function sends 5 malicious request patterns through the Application Gateway. |
-| 3 | Check the results — most/all patterns should be **Blocked** (HTTP 403). |
-| 4 | In Log Analytics, run the WAF firewall log query (see knowledge file for KQL). |
-| 5 | In SRE Agent, show how the agent classifies these as security events and identifies the OWASP rule IDs that triggered. |
-| 6 | **Key point**: No restore needed — the WAF correctly blocked the attacks. The app is unharmed. |
-
-**What to look for in SRE Agent**:
-- WAF block events in `ApplicationGatewayFirewallLog`.
-- Classification as a security event rather than an application failure.
-
----
-
-### Demo 4.4: Application Exception Storm
-
-**Narrative**: "What does a sudden burst of application errors look like to SRE Agent?"
-
-| Step | Action |
-|---|---|
-| 1 | From the Admin page, trigger **Error Storm** with count=100 (or `POST /api/trigger-error-storm?count=100`). |
-| 2 | In Application Insights, open the **Failures** blade — observe the spike. |
-| 3 | Show SRE Agent detecting the anomalous error rate and correlating it with the function app. |
-| 4 | Optionally follow up with **Trigger Exception** (typed exceptions like `timeout` or `division`) to show individual exception tracking. |
-
----
-
-### Demo 4.5: Latency and Resource Pressure
-
-**Narrative**: "How does SRE Agent respond to performance degradation?"
-
-| Step | Action |
-|---|---|
-| 1 | Trigger a slow response: `POST /api/trigger-slow-response?delay=30` |
-| 2 | Trigger a CPU spike: `POST /api/trigger-cpu-spike?duration=30` |
-| 3 | Show App Service metrics — CPU and response time charts spike. |
-| 4 | Point out how SRE Agent detects latency anomalies and resource saturation. |
+- WAF block events in `ApplicationGatewayFirewallLog` with matched OWASP rule IDs
+- Classification as a security event rather than an application failure
+- Application Gateway health metrics (backend should remain healthy — WAF blocks happen at the gateway level)
 
 ---
 
 ## Step 5: Post-Demo Wrap-up
 
-### Talking Points
-
-- **Detection speed**: How quickly SRE Agent identified each issue after the chaos trigger.
-- **Root cause accuracy**: Did the agent correctly identify the root cause (RBAC change, firewall rule, WAF rule)?
-- **Remediation guidance**: Were the recommendations actionable and correct?
-- **Signal correlation**: Show how the agent correlated signals across Application Insights, Log Analytics, Key Vault audit logs, and WAF logs to build a complete picture.
-
 ### Reset the Environment
 
-Ensure all access is restored before the next demo run:
-1. `POST /api/restore-keyvault-access`
-2. `POST /api/restore-sql-access`
-3. Verify `/Health/Probe` shows all green.
+No reset needed for the WAF demo — the SQL injection patterns are one-time requests that the WAF blocked. The application remains healthy throughout.
 
----
-
-## Step 6: Clean Up
+### Clean Up
 
 When finished with the demo environment:
 
@@ -259,23 +327,20 @@ This removes all Azure resources including the resource group, Key Vault (with p
 
 ---
 
-## Quick Reference: Function App API Endpoints
+## Alert Rules
 
-| Endpoint | Method | Purpose |
-|---|---|---|
-| `/api/health` | GET | Health check |
-| `/api/revoke-keyvault-access` | POST | Revoke Web App Key Vault access |
-| `/api/restore-keyvault-access` | POST | Restore Web App Key Vault access |
-| `/api/revoke-sql-access` | POST | Revoke Web App SQL connectivity |
-| `/api/restore-sql-access` | POST | Restore Web App SQL connectivity |
-| `/api/trigger-waf-sql-injection` | POST | Send SQL injection patterns through WAF |
-| `/api/trigger-exception?type={type}` | POST | Generate typed exceptions |
-| `/api/trigger-slow-response?delay={s}` | POST | Inject latency (max 230s) |
-| `/api/trigger-memory-leak?size={mb}` | POST | Allocate memory (max 500MB) |
-| `/api/trigger-cpu-spike?duration={s}` | POST | CPU saturation (max 60s) |
-| `/api/trigger-error-storm?count={n}` | POST | Burst error logs (max 200) |
-| `/api/trigger-log-flood?count={n}&level={lvl}` | POST | Flood logs (max 5000) |
-| `/api/trigger-dependency-failure` | POST | Simulate external dependency failure |
+The deployment includes six Azure Monitor alert rules. Only the WAF-related alerts are enabled by default for the demo:
+
+| Alert | Severity | Status | Trigger |
+|---|---|---|---|
+| **WAF Blocked Requests Detected** | Sev 2 | **Enabled** | `ApplicationGatewayFirewallLog` with `action == "Blocked"` |
+| **App Gateway Unhealthy Backend** | Sev 1 | **Enabled** | `UnhealthyHostCount > 0` metric |
+| Key Vault Access Failure | Sev 1 | Disabled | Key Vault access denied exceptions |
+| SQL Connectivity Failure | Sev 1 | Disabled | Failed SQL dependency calls |
+| Exception Rate Spike | Sev 2 | Disabled | Unhandled exceptions in Application Insights |
+| Function App Error Storm | Sev 2 | Disabled | Error-level Function App logs |
+
+To enable additional alerts, set `enabled: true` in `infra/modules/alerts.bicep` and run `azd provision`.
 
 ---
 
@@ -285,6 +350,8 @@ This removes all Azure resources including the resource group, Key Vault (with p
 |---|---|
 | `postprovision.ps1` fails on SQL firewall | Ensure your public IP is reachable; try from a Codespace instead |
 | Admin password shows "(unavailable)" on login page | Check that Key Vault Secrets User role is assigned to Web App managed identity |
-| Health probe shows Function App unreachable | Verify Function App deployed and running; check `azd deploy` output for errors |
-| WAF test shows 0 blocked patterns | Confirm Application Gateway and WAF policy are deployed; check that APP_GATEWAY_URL env var is set on Function App |
-| SRE Agent not detecting issues | Verify Application Insights and Log Analytics are connected in SRE Agent config; allow 2-5 minutes for telemetry ingestion |
+| SQL injection trigger shows "AppGatewayUrl not configured" | Run `azd provision` to add the `AppGatewayUrl` app setting to the web app |
+| WAF test shows 0 blocked patterns | Confirm Application Gateway and WAF policy are deployed; check App Gateway URL is reachable |
+| SRE Agent resource group picker is empty | Assign direct Owner role on the resource group to your user (not inherited from management group) |
+| SRE Agent shows no incidents | Ensure an incident response plan is created and connected to a subagent |
+| `RoleAssignmentExists` errors during `azd provision` | Safe to ignore — the role assignments already exist from a previous deployment |

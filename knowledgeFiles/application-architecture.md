@@ -55,7 +55,7 @@ All resources live inside a single resource group tagged with `azd-env-name`.
 | Always On | Yes |
 | FTPS | Disabled |
 | HTTPS Only | Yes |
-| App Settings | `APPLICATIONINSIGHTS_CONNECTION_STRING`, `ApplicationInsightsAgent_EXTENSION_VERSION` (~3), `KeyVaultName`, `FunctionAppUrl` |
+| App Settings | `APPLICATIONINSIGHTS_CONNECTION_STRING`, `ApplicationInsightsAgent_EXTENSION_VERSION` (~3), `KeyVaultName`, `FunctionAppUrl`, `AppGatewayUrl` |
 | Connection String | `DefaultConnection` -- connects to Azure SQL using `Authentication=Active Directory Default` (managed identity, no password) |
 | Health Probe Endpoint | `/Health/Probe` (used by Application Gateway) |
 
@@ -276,7 +276,8 @@ All diagnostic settings are defined in `infra/modules/diagnostics.bicep`. Every 
 - `GET /Dashboard/Integration` -- **Critical for SRE demos**: Tests and displays Key Vault connectivity (reads `demo-secret`) and SQL connectivity (counts users). Shows connection status and error messages when access is disrupted.
 
 #### AdminController (Requires Authentication + Admin Role)
-- `GET /Admin` -- Admin panel for triggering chaos engineering scenarios via the Function App API. Only visible to users with `Role == "Admin"`. Passes `FunctionAppUrl` to the view for API calls.
+- `GET /Admin` -- Admin panel with a single "Trigger SQL Injection Attack" button. Only visible to users with `Role == "Admin"`.
+- `POST /Admin/TriggerSqlInjection` -- Sends 5 SQL injection / XSS / path traversal patterns directly to the Application Gateway URL (`AppGatewayUrl` app setting) from the Web App. Returns JSON with `{totalPatterns, blockedCount, results[]}`. The button on the Admin page calls this endpoint via AJAX (with CSRF token). This is the **primary demo trigger** -- no Function App involvement.
 
 #### HealthController (Public)
 - `GET /Health/Probe` -- Comprehensive health check used by Application Gateway. Tests:
@@ -412,11 +413,11 @@ These endpoints modify actual Azure RBAC assignments and firewall rules, creatin
 
 ---
 
-### Scenario 3: WAF SQL Injection Blocking
+### Scenario 3: WAF SQL Injection Blocking (PRIMARY DEMO SCENARIO)
 
-**Trigger**: POST to `/api/trigger-waf-sql-injection`
+**Trigger**: Click "Trigger SQL Injection Attack" on the Admin page (calls `POST /Admin/TriggerSqlInjection` on the Web App), or alternatively `POST /api/trigger-waf-sql-injection` on the Function App.
 
-**What happens at the Azure level**: Five HTTP requests with SQL injection and XSS patterns are sent through the Application Gateway.
+**What happens at the Azure level**: Five HTTP requests with SQL injection, XSS, and path traversal patterns are sent from the Web App through the Application Gateway.
 
 **Symptoms SRE Agent should detect**:
 - Log Analytics WAF firewall logs: `ApplicationGatewayFirewallLog` entries with `action == "Blocked"`, matched OWASP rule IDs.
@@ -592,12 +593,23 @@ Internet
     |         +---> [Key Vault] <-------+-- managed identity auth
     |         |                         |
     |         +---> [App Insights] ---> [Log Analytics Workspace]
+    |         |
+    |         +---> POST /Admin/TriggerSqlInjection
+    |                   |  (sends SQL injection patterns)
+    |                   v
+    |              [Application Gateway WAF] ---> BLOCKED (403)
+    |                   |  (WAF firewall logs)
+    |                   v
+    |              [Log Analytics] ---> [Azure Monitor Alert]
+    |                                        |
+    |                                        v
+    |                                   [SRE Agent investigates]
     |
     +---> [Function App Python 3.11]
               |
               +---> Chaos: revoke/restore KV RBAC
               +---> Chaos: revoke/restore SQL firewall
-              +---> Chaos: WAF SQL injection test
+              +---> Chaos: WAF SQL injection test (alternative)
               +---> Chaos: exceptions, latency, CPU, memory
               +---> [Storage Account] (WebJobs)
 ```

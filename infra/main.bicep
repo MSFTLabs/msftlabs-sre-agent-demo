@@ -73,6 +73,7 @@ module appService 'modules/appservice.bicep' = {
     sqlServerName: sql.outputs.sqlServerName
     sqlDatabaseName: 'sredemodb'
     functionAppName: '${abbrs.webSitesFunctions}${resourceToken}'
+    appGatewayUrl: 'http://${toLower('${abbrs.networkApplicationGateways}${resourceToken}')}.${location}.cloudapp.azure.com'
   }
 }
 
@@ -105,6 +106,7 @@ module functionApp 'modules/functionapp.bicep' = {
     webAppPrincipalId: appService.outputs.webAppPrincipalId
     sqlServerName: sql.outputs.sqlServerName
     appGatewayUrl: 'http://${appGateway.outputs.appGatewayFqdn}'
+    webAppUrl: appService.outputs.webAppUrl
   }
 }
 
@@ -149,6 +151,26 @@ module funcMgmtRbac 'modules/funcapp-management-rbac.bicep' = {
   scope: resourceGroup
   params: {
     principalId: functionApp.outputs.functionAppPrincipalId
+  }
+}
+
+// Owner on RG for deployer (required for SRE Agent portal to list the resource group)
+module deployerRgOwner 'modules/deployer-rg-owner.bicep' = {
+  scope: resourceGroup
+  params: {
+    principalId: sqlAadAdminObjectId
+  }
+}
+
+// SRE Agent alert rules
+module alerts 'modules/alerts.bicep' = {
+  scope: resourceGroup
+  params: {
+    location: location
+    tags: tags
+    applicationInsightsId: monitoring.outputs.applicationInsightsId
+    logAnalyticsWorkspaceId: monitoring.outputs.logAnalyticsWorkspaceId
+    appGatewayResourceId: appGateway.outputs.appGatewayId
   }
 }
 
