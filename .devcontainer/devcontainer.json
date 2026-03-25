@@ -30,10 +30,9 @@
     }
   },
   "postCreateCommand": "dotnet restore src/web/SreDemo.Web.csproj && pip install -r src/api/requirements.txt",
-  "forwardPorts": [5000, 5001, 7071],
+  "forwardPorts": [5000, 5001],
   "portsAttributes": {
     "5000": { "label": "Web App (HTTP)" },
-    "5001": { "label": "Web App (HTTPS)" },
-    "7071": { "label": "Function App" }
+    "5001": { "label": "Web App (HTTPS)" }
   }
 }
