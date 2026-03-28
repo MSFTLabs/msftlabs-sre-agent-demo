@@ -13,9 +13,6 @@
     },
     "sqlAadAdminLogin": {
       "value": "${AZURE_AAD_ADMIN_LOGIN}"
-    },
-    "sreAgentLocation": {
-      "value": "${AZURE_SRE_AGENT_LOCATION=eastus2}"
     }
   }
 }

@@ -11,7 +11,6 @@ Self-contained lab environment for demonstrating Azure SRE Agent capabilities. O
 | **App Service (Linux/.NET 8)**         | Multi-page web app with health probe, DB-driven content                         |
 | **Application Gateway (WAF_v2)**       | OWASP 3.2 Prevention mode, public entry point, health probe polling             |
 | **Azure SQL Database**                 | Content storage (SitePages), Entra-only auth, per-IP firewall (selected networks) |
-| **Azure SRE Agent**                    | Autonomous incident investigation & remediation, scoped to resource group        |
 | **Application Insights**               | Telemetry, performance monitoring, error tracking                               |
 | **Log Analytics Workspace**            | Centralized log collection, WAF firewall logs, diagnostics                      |
 
@@ -53,6 +52,31 @@ azd auth login --tenant-id "<your-tenant-id>"
 
 ### Quick Deploy
 
+The fastest way to get started is with the interactive setup script, which handles environment creation, subscription/location selection, identity detection, and GitHub PAT configuration in a single guided flow:
+
+```powershell
+git clone https://github.com/MSFTLabs/msftlabs-sre-agent-demo.git
+cd msftlabs-sre-agent-demo
+
+az login
+azd auth login --tenant-id "$(az account show --query tenantId -o tsv)"
+
+./scripts/setup-env.ps1
+azd up
+```
+
+The script will prompt you for:
+- **Environment name** (e.g., `sreagent-demo-01`)
+- **Azure subscription** (interactive list selection)
+- **Azure location** (default: `centralus`)
+
+It auto-detects your signed-in identity and writes all required values to `.azure/<envName>/.env`.
+
+<details>
+<summary><strong>Manual setup (alternative)</strong></summary>
+
+If you prefer to set environment variables manually:
+
 ```powershell
 git clone https://github.com/MSFTLabs/msftlabs-sre-agent-demo.git
 cd msftlabs-sre-agent-demo
@@ -66,22 +90,16 @@ azd env set AZURE_LOCATION "eastus2"
 azd env set AZURE_PRINCIPAL_ID "$(az ad signed-in-user show --query id -o tsv)"
 azd env set AZURE_AAD_ADMIN_LOGIN "$(az ad signed-in-user show --query userPrincipalName -o tsv)"
 
-# Optional: SRE Agent GitHub integration (requires a GitHub PAT with repo scope)
-azd env set AZURE_GITHUB_TOKEN "<your-github-pat>"
-azd env set AZURE_GITHUB_REPO_URL "https://github.com/<your-org>/msftlabs-sre-agent-demo"
-
 azd up
 ```
 
-The `postprovision` hook:
-1. Grants the web app managed identity `db_owner` on the SQL database and seeds content.
-2. Configures the SRE Agent — sets GitHub PAT, creates an Azure Monitor action group for incident routing, and wires it to the alert rule.
+</details>
+
+The `postprovision` hook grants the web app managed identity `db_owner` on the SQL database and seeds content.
 
 The `postup` hook prints the **Application Gateway public URL**.
 
-> **Note:** Knowledge files and the GitHub repository URL must be configured via the [SRE Agent portal](https://sre.azure.com) after deployment — no ARM REST API is available for these.
-
-> **Note:** MCAPS policy requires SQL Entra-only auth at server creation. The identity env vars are passed to Bicep for the SQL admin configuration.
+> **Note:** The Azure SRE Agent is created and configured through the [SRE Agent portal](https://sre.azure.com) during the demo — see [demo/GUIDE.md](demo/GUIDE.md) for the full walkthrough.
 
 ### AZD Command Reference
 
@@ -108,7 +126,6 @@ The `postup` hook prints the **Application Gateway public URL**.
 │       ├── monitoring.bicep        # Log Analytics + App Insights
 │       ├── sql.bicep               # SQL Server + Database
 │       ├── sql-firewall.bicep      # Per-IP firewall rules (App Service outbound IPs)
-│       ├── sre-agent.bicep         # Azure SRE Agent (core resource + RBAC)
 │       ├── alerts.bicep            # Azure Monitor alert (AppGW unhealthy backend)
 │       ├── diagnostics.bicep       # Diagnostic settings
 │       └── deployer-rg-owner.bicep # RG Owner role for deployer identity
@@ -119,9 +136,9 @@ The `postup` hook prints the **Application Gateway public URL**.
 │       ├── Models/         # SitePage, ViewModels
 │       └── Views/          # Razor views
 ├── scripts/
-│   ├── preprovision.ps1        # Detect deployer identity + clean stale action groups
-│   ├── postprovision.ps1       # SQL access + DB seeding + SRE Agent configuration
-│   ├── configure-sre-agent.ps1 # GitHub PAT, incident action group, alert wiring
+│   ├── setup-env.ps1           # Interactive environment setup wizard (replaces azd init + azd env set)
+│   ├── preprovision.ps1        # Detect deployer identity
+│   ├── postprovision.ps1       # SQL access + DB seeding
 │   ├── postup.ps1              # Display App Gateway URL
 │   └── seed-db/                # .NET console tool for DB content seeding
 ├── knowledgeFiles/         # SRE Agent knowledge files (upload via portal)

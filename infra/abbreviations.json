@@ -12,6 +12,5 @@
   "networkPublicIPAddresses": "pip-",
   "networkApplicationGateways": "agw-",
   "networkApplicationGatewayWebApplicationFirewallPolicies": "waf-",
-  "managedIdentityUserAssignedIdentities": "id-",
-  "appAgents": "sre-"
+  "managedIdentityUserAssignedIdentities": "id-"
 }

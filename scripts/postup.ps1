@@ -4,7 +4,6 @@
 $gatewayUrl = $env:AZURE_APP_GATEWAY_URL
 $gatewayIp  = $env:AZURE_APP_GATEWAY_IP
 $webAppUrl  = $env:AZURE_WEBAPP_URL
-$srePortal  = $env:AZURE_SRE_AGENT_PORTAL_URL
 
 Write-Host ""
 Write-Host "==========================================" -ForegroundColor Cyan
@@ -22,9 +21,6 @@ if ($gatewayIp) {
 }
 if ($webAppUrl) {
     Write-Host "  Web App URL:       $webAppUrl" -ForegroundColor White
-}
-if ($srePortal) {
-    Write-Host "  SRE Agent Portal:  $srePortal" -ForegroundColor White
 }
 
 Write-Host ""

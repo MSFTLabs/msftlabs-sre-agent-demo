@@ -1,7 +1,7 @@
 #!/usr/bin/env pwsh
 # setup-env.ps1 - Initializes the azd environment (.azure/<envName>/.env)
 # Equivalent to 'azd init' + populating all required values from Azure CLI.
-# Prompts for environment name, subscription, location, and GITHUB_PAT.
+# Prompts for environment name, subscription, and location.
 
 $ErrorActionPreference = 'Stop'
 
@@ -123,30 +123,7 @@ Write-Host "  User:      $userLogin"
 Write-Host "  Object ID: $userObjectId"
 
 # ============================================================
-# 6) Resolve GITHUB_PAT
-# ============================================================
-Write-Host ""
-Write-Host "=== Checking GITHUB_PAT ===" -ForegroundColor Cyan
-
-$githubPat = $env:GITHUB_PAT
-if ($githubPat) {
-    Write-Host "  Found GITHUB_PAT in environment variable" -ForegroundColor Green
-} else {
-    Write-Host "  GITHUB_PAT not found in environment variables." -ForegroundColor Yellow
-    $secureInput = Read-Host "  Enter your GitHub Personal Access Token" -AsSecureString
-    $githubPat = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
-        [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureInput)
-    )
-    if (-not $githubPat) {
-        Write-Error "GITHUB_PAT is required."
-        exit 1
-    }
-}
-
-Write-Host "  GITHUB_PAT: ****$(($githubPat).Substring([Math]::Max(0, $githubPat.Length - 4)))" -ForegroundColor Green
-
-# ============================================================
-# 7) Create .azure/<envName>/.env
+# 6) Create .azure/<envName>/.env
 # ============================================================
 Write-Host ""
 Write-Host "=== Creating azd environment ===" -ForegroundColor Cyan
@@ -161,7 +138,6 @@ AZURE_LOCATION="$location"
 AZURE_SUBSCRIPTION_ID="$subscriptionId"
 AZURE_PRINCIPAL_ID="$userObjectId"
 AZURE_AAD_ADMIN_LOGIN="$userLogin"
-GITHUB_PAT="$githubPat"
 "@
 
 $envFilePath = Join-Path $envDir ".env"
@@ -188,7 +164,6 @@ Write-Host "  Subscription:    $subscriptionName"
 Write-Host "  Location:        $location"
 Write-Host "  User:            $userLogin"
 Write-Host "  Principal ID:    $userObjectId"
-Write-Host "  GITHUB_PAT:      ****$(($githubPat).Substring([Math]::Max(0, $githubPat.Length - 4)))"
 Write-Host ""
 Write-Host "  Run 'azd up' to provision and deploy." -ForegroundColor Cyan
 Write-Host ""

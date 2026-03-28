@@ -29,29 +29,37 @@ Before starting, ensure you have:
 
 ## Step 2: Deploy the Demo Environment
 
-### 2.1 Initialize azd
+### 2.1 Set Up the Environment
+
+The interactive setup script handles environment creation, subscription/location selection, and identity detection in one step:
+
+```bash
+./scripts/setup-env.ps1
+```
+
+The script will prompt you for:
+
+- **Environment name**: e.g., `sreagent-demo-01` (this becomes part of all resource names and the resource group `rg-sreagent-demo-01`).
+- **Azure subscription**: interactive list of your enabled subscriptions.
+- **Azure location**: defaults to `centralus`.
+
+It auto-detects your signed-in identity (Object ID and UPN) and writes all required values to `.azure/<envName>/.env`.
+
+<details>
+<summary><strong>Manual setup (alternative)</strong></summary>
+
+If you prefer to configure environment variables manually:
 
 ```bash
 azd init
-```
-
-When prompted, provide:
-
-- **Environment name**: e.g., `sreagent-demo-01` (this becomes part of all resource names and the resource group `rg-sreagent-demo-01`).
-
-### 2.2 Set Required Parameters
-
-```bash
 azd env set AZURE_LOCATION "eastus2"
 azd env set sqlAadAdminObjectId "$(az ad signed-in-user show --query id -o tsv)"
 azd env set sqlAadAdminLogin "$(az ad signed-in-user show --query userPrincipalName -o tsv)"
-
-# Optional: SRE Agent GitHub integration
-azd env set AZURE_GITHUB_TOKEN "<your-github-pat>"   # PAT with repo scope
-azd env set AZURE_GITHUB_REPO_URL "https://github.com/<your-org>/msftlabs-sre-agent-demo"
 ```
 
-### 2.3 Deploy Everything
+</details>
+
+### 2.2 Deploy Everything
 
 ```bash
 azd up
@@ -59,17 +67,15 @@ azd up
 
 This single command:
 
-1. Runs `scripts/preprovision.ps1` which detects your deployer identity and cleans any stale SRE Agent action groups.
-2. Provisions all Azure resources via Bicep — App Service, Application Gateway with WAF, SQL with per-IP firewall rules, Log Analytics, Application Insights, **Azure SRE Agent**, and alert rule.
-3. Runs `scripts/postprovision.ps1` which:
-   - Grants the Web App managed identity `db_owner` SQL access and seeds the database with content pages.
-   - Configures the SRE Agent — sets the GitHub PAT (if provided), creates an Azure Monitor incident action group, and wires it to the alert rule.
+1. Runs `scripts/preprovision.ps1` which detects your deployer identity.
+2. Provisions all Azure resources via Bicep — App Service, Application Gateway with WAF, SQL with per-IP firewall rules, Log Analytics, Application Insights, and alert rule.
+3. Runs `scripts/postprovision.ps1` which grants the Web App managed identity `db_owner` SQL access and seeds the database with content pages.
 4. Deploys the .NET web app.
 5. Runs `scripts/postup.ps1` which displays the **Application Gateway public URL**.
 
-> **Note:** You may see `RoleAssignmentExists` errors on re-deployment — these are safe to ignore.
+> **Note:** The Azure SRE Agent is created and configured through the portal during the demo (Step 3.3) — it is not part of the Bicep deployment.
 
-### 2.4 Verify Deployment
+### 2.3 Verify Deployment
 
 After `azd up` completes, you will see output like:
 
@@ -86,7 +92,7 @@ After `azd up` completes, you will see output like:
 
 Open the **Application URL** in a browser to confirm the app is working.
 
-### 2.5 Verify Health
+### 2.4 Verify Health
 
 Navigate to `/Health/Probe` on the Application URL. Confirm the SQL check is green:
 
@@ -113,16 +119,18 @@ This demo tells a story: InfoSec pushed a security policy that disabled public n
 
 > **This change takes several minutes to propagate.** Use this time to set up the SRE Agent (Step 3.3). The health probe refreshes its SQL connection pool every 5 seconds, so it will detect the failure as soon as the change takes effect.
 
-### 3.3 Configure the SRE Agent (While Waiting for Propagation)
+### 3.3 Create and Configure the SRE Agent (While Waiting for Propagation)
 
-Use the propagation wait time to finish configuring the SRE Agent in the portal. The agent resource itself was already deployed via Bicep, and the `postprovision` script configured the GitHub PAT and incident action group.
+Use the propagation wait time to create and configure the SRE Agent through the portal.
 
-#### Verify the Agent
+#### Create the SRE Agent
 
 1. Open [https://sre.azure.com](https://sre.azure.com) in a new browser tab.
-2. The SRE Agent (`sre-{resourceToken}`) should appear in the list — click it.
-3. Verify **Settings** → **Incidents** shows **Azure Monitor** as **Connected**.
-4. Narrate: *"The SRE Agent was deployed as part of our Bicep infrastructure and automatically connected to Azure Monitor for incident routing."*
+2. Click **+ Create agent**.
+3. Select the **subscription** and **resource group** used by the demo (e.g., `rg-sreagent-demo-01`).
+4. Choose a supported region (e.g., `eastus2`).
+5. Complete the creation wizard.
+6. Narrate: *"We’re creating the SRE Agent directly in the portal and scoping it to our demo resource group."*
 
 #### Grant Permissions
 
@@ -175,8 +183,9 @@ Use the propagation wait time to finish configuring the SRE Agent in the portal.
 #### Connect Incident Platform
 
 1. Go to **Settings** → **Incidents**.
-2. Confirm **Azure Monitor** shows as **Connected**.
-3. Narrate: *"The postprovision script created an Azure Monitor action group that routes alerts directly to the SRE Agent as incidents — no manual configuration needed."*
+2. Click **Connect** next to **Azure Monitor**.
+3. Configure the incident action group to route alerts from the demo resource group to the SRE Agent.
+4. Narrate: *"We’re connecting Azure Monitor so that alerts fire directly to the SRE Agent as incidents."*
 
 #### Upload the Knowledge Files
 
@@ -384,7 +393,5 @@ This alert fires when the Application Gateway health probe (polling `/Health/Pro
 | `postprovision.ps1` fails on SQL firewall              | Ensure your public IP is reachable; try from a Codespace instead                                                                     |
 | Health probe shows SQL FAIL after deployment             | Wait 1–2 minutes for the managed identity SQL user to take effect                                                                   |
 | 502 not appearing after disabling SQL public access      | Wait several minutes — Azure control plane changes propagate slowly; the health probe refreshes its connection pool every 5 seconds |
-| SRE Agent not created during deployment                  | Verify `azd provision` completed successfully; the SRE Agent is deployed via `infra/modules/sre-agent.bicep`                         |
-| Incident action group `AadWebhookResourceNotOwnedByCaller` | The `preprovision.ps1` script should auto-clean stale action groups; if it recurs, manually delete the action group and re-run `azd provision` |
 | SRE Agent shows no incidents                             | Ensure the incident response plan is created in the portal and set to Sev 1; verify the action group is wired to the alert rule     |
 | `RoleAssignmentExists` errors during `azd provision` | Safe to ignore — the role assignments already exist from a previous deployment                                                      |

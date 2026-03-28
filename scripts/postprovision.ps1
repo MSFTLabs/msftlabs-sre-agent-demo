@@ -114,16 +114,6 @@ Write-Host ""
 Write-Host "Post-provision: SQL setup complete." -ForegroundColor Green
 Write-Host ""
 
-# ============================================================
-# 5) Configure SRE Agent (knowledge files, GitHub, incidents)
-# ============================================================
-$sreScript = Join-Path $PSScriptRoot "configure-sre-agent.ps1"
-if (Test-Path $sreScript) {
-    & $sreScript
-} else {
-    Write-Warning "configure-sre-agent.ps1 not found — skipping SRE Agent configuration"
-}
-
 Write-Host ""
 Write-Host "Post-provision complete." -ForegroundColor Green
 Write-Host ""
