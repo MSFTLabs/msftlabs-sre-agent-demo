@@ -34,3 +34,5 @@ Thumbs.db
 # Build
 publish/
 dist/
+
+.fake

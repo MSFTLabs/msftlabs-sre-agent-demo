@@ -1,8 +1,10 @@
 #!/usr/bin/env pwsh
-# postup.ps1 - Displays Application Gateway URL after 'azd up'
+# postup.ps1 - Displays deployment URLs after 'azd up'
 
 $gatewayUrl = $env:AZURE_APP_GATEWAY_URL
 $gatewayIp  = $env:AZURE_APP_GATEWAY_IP
+$webAppUrl  = $env:AZURE_WEBAPP_URL
+$srePortal  = $env:AZURE_SRE_AGENT_PORTAL_URL
 
 Write-Host ""
 Write-Host "==========================================" -ForegroundColor Cyan
@@ -12,9 +14,17 @@ Write-Host ""
 
 if ($gatewayUrl) {
     Write-Host "  Application URL:   $gatewayUrl" -ForegroundColor Green
+} elseif ($webAppUrl) {
+    Write-Host "  Application URL:   $webAppUrl" -ForegroundColor Green
 }
 if ($gatewayIp) {
     Write-Host "  Public IP:         $gatewayIp" -ForegroundColor White
+}
+if ($webAppUrl) {
+    Write-Host "  Web App URL:       $webAppUrl" -ForegroundColor White
+}
+if ($srePortal) {
+    Write-Host "  SRE Agent Portal:  $srePortal" -ForegroundColor White
 }
 
 Write-Host ""

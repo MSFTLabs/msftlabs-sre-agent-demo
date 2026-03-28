@@ -11,6 +11,7 @@ Self-contained lab environment for demonstrating Azure SRE Agent capabilities. O
 | **App Service (Linux/.NET 8)**         | Multi-page web app with health probe, DB-driven content                         |
 | **Application Gateway (WAF_v2)**       | OWASP 3.2 Prevention mode, public entry point, health probe polling             |
 | **Azure SQL Database**                 | Content storage (SitePages), Entra-only auth, per-IP firewall (selected networks) |
+| **Azure SRE Agent**                    | Autonomous incident investigation & remediation, scoped to resource group        |
 | **Application Insights**               | Telemetry, performance monitoring, error tracking                               |
 | **Log Analytics Workspace**            | Centralized log collection, WAF firewall logs, diagnostics                      |
 
@@ -64,10 +65,21 @@ azd env set AZURE_SUBSCRIPTION_ID "$(az account show --query id -o tsv)"
 azd env set AZURE_LOCATION "eastus2"
 azd env set AZURE_PRINCIPAL_ID "$(az ad signed-in-user show --query id -o tsv)"
 azd env set AZURE_AAD_ADMIN_LOGIN "$(az ad signed-in-user show --query userPrincipalName -o tsv)"
+
+# Optional: SRE Agent GitHub integration (requires a GitHub PAT with repo scope)
+azd env set AZURE_GITHUB_TOKEN "<your-github-pat>"
+azd env set AZURE_GITHUB_REPO_URL "https://github.com/<your-org>/msftlabs-sre-agent-demo"
+
 azd up
 ```
 
-The `postprovision` hook grants the web app managed identity `db_owner` on the SQL database and seeds content. The `postup` hook prints the **Application Gateway public URL**.
+The `postprovision` hook:
+1. Grants the web app managed identity `db_owner` on the SQL database and seeds content.
+2. Configures the SRE Agent — sets GitHub PAT, creates an Azure Monitor action group for incident routing, and wires it to the alert rule.
+
+The `postup` hook prints the **Application Gateway public URL**.
+
+> **Note:** Knowledge files and the GitHub repository URL must be configured via the [SRE Agent portal](https://sre.azure.com) after deployment — no ARM REST API is available for these.
 
 > **Note:** MCAPS policy requires SQL Entra-only auth at server creation. The identity env vars are passed to Bicep for the SQL admin configuration.
 
@@ -91,13 +103,15 @@ The `postprovision` hook grants the web app managed identity `db_owner` on the S
 │   ├── main.bicep          # Main orchestrator
 │   ├── main.parameters.json
 │   └── modules/
-│       ├── appgateway.bicep    # Application Gateway + WAF v2
-│       ├── appservice.bicep    # App Service Plan + Web App
-│       ├── monitoring.bicep    # Log Analytics + App Insights
-│       ├── sql.bicep           # SQL Server + Database
-│       ├── sql-firewall.bicep  # Per-IP firewall rules (App Service outbound IPs)
-│       ├── alerts.bicep        # Azure Monitor alert (AppGW unhealthy backend)
-│       └── diagnostics.bicep   # Diagnostic settings
+│       ├── appgateway.bicep        # Application Gateway + WAF v2
+│       ├── appservice.bicep        # App Service Plan + Web App
+│       ├── monitoring.bicep        # Log Analytics + App Insights
+│       ├── sql.bicep               # SQL Server + Database
+│       ├── sql-firewall.bicep      # Per-IP firewall rules (App Service outbound IPs)
+│       ├── sre-agent.bicep         # Azure SRE Agent (core resource + RBAC)
+│       ├── alerts.bicep            # Azure Monitor alert (AppGW unhealthy backend)
+│       ├── diagnostics.bicep       # Diagnostic settings
+│       └── deployer-rg-owner.bicep # RG Owner role for deployer identity
 ├── src/
 │   └── web/                # ASP.NET Core 8 MVC application
 │       ├── Controllers/    # Home, Health
@@ -105,11 +119,12 @@ The `postprovision` hook grants the web app managed identity `db_owner` on the S
 │       ├── Models/         # SitePage, ViewModels
 │       └── Views/          # Razor views
 ├── scripts/
-│   ├── postprovision.ps1   # SQL access + DB seeding
-│   ├── postup.ps1          # Display App Gateway URL
-│   ├── chaos-triggers.ps1  # Optional chaos triggers (WAF, SQL firewall)
-│   └── seed-db/            # .NET console tool for DB content seeding
-├── knowledgeFiles/         # SRE Agent knowledge file
+│   ├── preprovision.ps1        # Detect deployer identity + clean stale action groups
+│   ├── postprovision.ps1       # SQL access + DB seeding + SRE Agent configuration
+│   ├── configure-sre-agent.ps1 # GitHub PAT, incident action group, alert wiring
+│   ├── postup.ps1              # Display App Gateway URL
+│   └── seed-db/                # .NET console tool for DB content seeding
+├── knowledgeFiles/         # SRE Agent knowledge files (upload via portal)
 ├── demo/GUIDE.md           # Full demo walkthrough
 ├── azure.yaml              # Azure Developer CLI config
 └── README.md

@@ -11,5 +11,7 @@
   "networkVirtualNetworks": "vnet-",
   "networkPublicIPAddresses": "pip-",
   "networkApplicationGateways": "agw-",
-  "networkApplicationGatewayWebApplicationFirewallPolicies": "waf-"
+  "networkApplicationGatewayWebApplicationFirewallPolicies": "waf-",
+  "managedIdentityUserAssignedIdentities": "id-",
+  "appAgents": "sre-"
 }

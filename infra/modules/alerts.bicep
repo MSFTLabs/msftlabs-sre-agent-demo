@@ -10,6 +10,9 @@ param appGatewayResourceId string
 @description('Optional email address for alert notifications')
 param notificationEmail string = ''
 
+@description('Optional SRE Agent action group ID — when provided, Azure Monitor alerts are routed to the SRE Agent as incidents')
+param sreAgentActionGroupId string = ''
+
 // ============================================================
 // Action Group (created only when an email is provided)
 // ============================================================
@@ -30,7 +33,10 @@ resource actionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = if (!empty(n
   }
 }
 
-var actionGroups = !empty(notificationEmail) ? [{ actionGroupId: actionGroup.id }] : []
+var actionGroups = concat(
+  !empty(notificationEmail) ? [{ actionGroupId: actionGroup.id }] : [],
+  !empty(sreAgentActionGroupId) ? [{ actionGroupId: sreAgentActionGroupId }] : []
+)
 
 // ============================================================
 // Application Gateway Unhealthy Backend (Sev 1)

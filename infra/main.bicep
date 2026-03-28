@@ -12,6 +12,10 @@ param sqlAadAdminObjectId string
 @description('UPN of the deploying user (auto-set by preprovision hook)')
 param sqlAadAdminLogin string
 
+@description('Azure region for SRE Agent (must be a supported region)')
+@allowed(['eastus2', 'swedencentral', 'australiaeast', 'uksouth'])
+param sreAgentLocation string = 'eastus2'
+
 var abbrs = loadJsonContent('./abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var tags = { 'azd-env-name': environmentName }
@@ -124,6 +128,21 @@ module diagnostics 'modules/diagnostics.bicep' = {
   }
 }
 
+// SRE Agent: AI-powered reliability assistant
+module sreAgent 'modules/sre-agent.bicep' = {
+  scope: resourceGroup
+  params: {
+    location: sreAgentLocation
+    tags: tags
+    agentName: '${abbrs.appAgents}${resourceToken}'
+    managedIdentityName: '${abbrs.managedIdentityUserAssignedIdentities}${resourceToken}'
+    applicationInsightsConnectionString: monitoring.outputs.applicationInsightsConnectionString
+    applicationInsightsAppId: monitoring.outputs.applicationInsightsAppId
+    deployerPrincipalId: sqlAadAdminObjectId
+    managedResourceGroupId: resourceGroup.id
+  }
+}
+
 output AZURE_RESOURCE_GROUP string = resourceGroup.name
 output AZURE_WEBAPP_NAME string = appService.outputs.webAppName
 output AZURE_WEBAPP_URL string = appService.outputs.webAppUrl
@@ -132,3 +151,6 @@ output AZURE_SQL_SERVER_FQDN string = sql.outputs.sqlServerFqdn
 output AZURE_SQL_DATABASE_NAME string = sql.outputs.sqlDatabaseName
 output AZURE_APP_GATEWAY_URL string = 'http://${appGateway.outputs.appGatewayFqdn}'
 output AZURE_APP_GATEWAY_IP string = appGateway.outputs.appGatewayPublicIp
+output AZURE_SRE_AGENT_NAME string = sreAgent.outputs.agentName
+output AZURE_SRE_AGENT_PORTAL_URL string = sreAgent.outputs.agentPortalUrl
+output AZURE_SRE_MANAGED_IDENTITY_PRINCIPAL_ID string = sreAgent.outputs.managedIdentityPrincipalId

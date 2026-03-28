@@ -21,7 +21,8 @@
         "ms-dotnettools.csdevkit",
         "ms-python.python",
         "ms-azuretools.vscode-azureappservice",
-        "ms-vscode.azurecli"
+        "ms-vscode.azurecli",
+        "yzhang.markdown-all-in-one"
       ],
       "settings": {
         "python.defaultInterpreterPath": "/usr/local/bin/python",

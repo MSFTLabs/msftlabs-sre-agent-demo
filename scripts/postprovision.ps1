@@ -70,6 +70,8 @@ END
     Write-Host "  [done] '$webAppName' added as db_owner in $sqlDbName" -ForegroundColor Green
 } catch {
     Write-Warning "  SQL user provisioning failed: $_"
+    Write-Warning "  Skipping seed step - database may be empty."
+    exit 0
 }
 
 # ============================================================
@@ -86,7 +88,7 @@ Push-Location $seedDir
 try {
     dotnet run --no-launch-profile -- $sqlFqdn $sqlDbName $token
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Database seed failed (exit code $LASTEXITCODE)"
+        Write-Warning "Database seed failed (exit code $LASTEXITCODE) - app will start with an empty database."
     }
 } finally {
     Pop-Location
@@ -107,6 +109,20 @@ Write-Host "  [done] Deployer firewall rule removed" -ForegroundColor Green
 az sql server firewall-rule delete --resource-group $rgName --server $sqlServerName `
     --name AllowAllWindowsAzureIps -o none 2>$null
 Write-Host "  [done] AllowAllWindowsAzureIps rule removed (using per-IP rules only)" -ForegroundColor Green
+
+Write-Host ""
+Write-Host "Post-provision: SQL setup complete." -ForegroundColor Green
+Write-Host ""
+
+# ============================================================
+# 5) Configure SRE Agent (knowledge files, GitHub, incidents)
+# ============================================================
+$sreScript = Join-Path $PSScriptRoot "configure-sre-agent.ps1"
+if (Test-Path $sreScript) {
+    & $sreScript
+} else {
+    Write-Warning "configure-sre-agent.ps1 not found — skipping SRE Agent configuration"
+}
 
 Write-Host ""
 Write-Host "Post-provision complete." -ForegroundColor Green
