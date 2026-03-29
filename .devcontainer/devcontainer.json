@@ -3,34 +3,26 @@
   "image": "mcr.microsoft.com/devcontainers/universal:2",
   "features": {
     "ghcr.io/devcontainers/features/azure-cli:1": {},
-    "ghcr.io/azure/azure-dev/azd:1": {},
     "ghcr.io/devcontainers/features/dotnet:2": {
       "version": "8.0"
-    },
-    "ghcr.io/devcontainers/features/python:1": {
-      "version": "3.11"
-    },
-    "ghcr.io/jlaundry/devcontainer-features/azure-functions-core-tools:1": {}
+    }
   },
+  "postCreateCommand": "curl -fsSL https://aka.ms/install-azd.sh | bash && dotnet restore src/web/SreDemo.Web.csproj",
   "customizations": {
     "vscode": {
       "extensions": [
-        "ms-azuretools.vscode-azurefunctions",
         "ms-azuretools.vscode-bicep",
         "ms-dotnettools.csharp",
         "ms-dotnettools.csdevkit",
-        "ms-python.python",
         "ms-azuretools.vscode-azureappservice",
         "ms-vscode.azurecli",
         "yzhang.markdown-all-in-one"
       ],
       "settings": {
-        "python.defaultInterpreterPath": "/usr/local/bin/python",
         "dotnet.defaultSolution": "src/web/SreDemo.Web.csproj"
       }
     }
   },
-  "postCreateCommand": "dotnet restore src/web/SreDemo.Web.csproj && pip install -r src/api/requirements.txt",
   "forwardPorts": [5000, 5001],
   "portsAttributes": {
     "5000": { "label": "Web App (HTTP)" },

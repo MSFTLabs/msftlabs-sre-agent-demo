@@ -87,7 +87,37 @@ az account set --subscription $subscriptionId 2>$null
 Write-Host "  Using: $subscriptionName ($subscriptionId)" -ForegroundColor Green
 
 # ============================================================
-# 4) Select Azure location
+# 4) Verify Owner role on subscription
+# ============================================================
+Write-Host ""
+Write-Host "=== Verifying subscription permissions ===" -ForegroundColor Cyan
+
+$userObjectId = az ad signed-in-user show --query id -o tsv 2>$null
+$userLogin    = az ad signed-in-user show --query userPrincipalName -o tsv 2>$null
+if (-not $userObjectId -or -not $userLogin) {
+    Write-Error "Could not detect signed-in user. Ensure you are logged in with 'az login'."
+    exit 1
+}
+
+# Check for Owner role (built-in role definition ID: 8e3af657-a8ff-443c-a75c-2fe8c4bcb635)
+$ownerAssignment = az role assignment list `
+    --assignee $userObjectId `
+    --scope "/subscriptions/$subscriptionId" `
+    --role "Owner" `
+    --query "[0].id" -o tsv 2>$null
+
+if (-not $ownerAssignment) {
+    Write-Host ""
+    Write-Error "You do not have the Owner role on subscription '$subscriptionName'.`nOwner is required for this deployment (creates role assignments, SQL Entra admin, etc.).`nRequest Owner access and try again."
+    exit 1
+}
+
+Write-Host "  Owner role confirmed" -ForegroundColor Green
+Write-Host "  User:      $userLogin"
+Write-Host "  Object ID: $userObjectId"
+
+# ============================================================
+# 5) Select Azure location
 # ============================================================
 Write-Host ""
 Write-Host "=== Select Azure location ===" -ForegroundColor Cyan
@@ -104,23 +134,6 @@ if ($location -notin $validLocations) {
 }
 
 Write-Host "  Location: $location" -ForegroundColor Green
-
-# ============================================================
-# 5) Get signed-in user identity
-# ============================================================
-Write-Host ""
-Write-Host "=== Detecting signed-in user ===" -ForegroundColor Cyan
-
-$userObjectId = az ad signed-in-user show --query id -o tsv 2>$null
-$userLogin    = az ad signed-in-user show --query userPrincipalName -o tsv 2>$null
-
-if (-not $userObjectId -or -not $userLogin) {
-    Write-Error "Could not detect signed-in user. Ensure you are logged in with 'az login'."
-    exit 1
-}
-
-Write-Host "  User:      $userLogin"
-Write-Host "  Object ID: $userObjectId"
 
 # ============================================================
 # 6) Create .azure/<envName>/.env
