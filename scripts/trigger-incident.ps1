@@ -1,7 +1,8 @@
 #!/usr/bin/env pwsh
 # trigger-incident.ps1 — Disables SQL public network access to trigger an
-# SRE Agent incident, then polls each stage of the detection → investigation
-# → remediation lifecycle and prints timestamped status to the terminal.
+# Azure Monitor alert, then tracks the SRE Agent auto-detecting the incident
+# via webhook, investigating, and remediating — printing timestamped status
+# for each lifecycle stage.
 
 param(
     [string]$EnvName,
@@ -149,39 +150,50 @@ if (-not $alertFired) {
 }
 
 # ============================================================
-# Stage 4: Create SRE Agent incident
+# Stage 4: Wait for SRE Agent to auto-detect the incident
 # ============================================================
 Write-Host ""
-Write-Host "--- STAGE 4: Creating SRE Agent incident -------------------" -ForegroundColor Magenta
+Write-Host "--- STAGE 4: Waiting for SRE Agent auto-detection ----------" -ForegroundColor Magenta
 
 Write-Stage "Looking up SRE Agent endpoint..." "DarkGray"
 $agentUrl = "https://management.azure.com/subscriptions/$subId/resourceGroups/$rg/providers/Microsoft.App/agents/${SreAgentName}?api-version=2026-01-01"
 $agent = az rest --method GET --url $agentUrl 2>$null | ConvertFrom-Json
 
+$incidentDetected = $false
 if ($agent -and $agent.properties.agentEndpoint) {
     $endpoint = $agent.properties.agentEndpoint
     Write-Stage "Agent endpoint: $endpoint" "DarkGray"
     Write-Stage "Portal: https://sre.azure.com" "DarkGray"
+    Write-Stage "Polling for auto-detected incident (via Azure Monitor webhook)..." "Cyan"
 
-    $incidentMsg = "INCIDENT: AppGW Unhealthy Backend - SQL Public Network Access Disabled`nSeverity: CRITICAL`nAffected services: Application Gateway, App Service, SQL Database`nSQL Server $sqlName has publicNetworkAccess=Disabled, blocking database connections. Health probe at /Health/Probe returns HTTP 503.`nRemediate by re-enabling public network access: az sql server update --name $sqlName --resource-group $rg --set publicNetworkAccess=Enabled`nInvestigate this incident. Identify root cause, assess impact, and remediate."
-    $incidentBody = @{
-        request      = 'incident'
-        StartMessage = @{ text = $incidentMsg }
-    } | ConvertTo-Json -Compress
-
-    $tempFile = Join-Path $env:TEMP 'sre-incident.json'
-    $incidentBody | Set-Content -Path $tempFile -NoNewline
-
-    Write-Stage "Creating incident via SRE Agent..." "Cyan"
-    $result = az rest --method POST `
-        --url "$endpoint/api/v1/threads" `
-        --body "@$tempFile" `
-        --headers "Content-Type=application/json" `
-        --resource "https://azuresre.ai" 2>$null | ConvertFrom-Json
-    if ($result -and $result.id) {
-        Write-Stage "Incident created — thread $($result.id)" "Green"
-    } else {
-        Write-Stage "API call failed — check SRE Agent portal" "Yellow"
+    $maxWait = 600; $elapsed = 0
+    while ($elapsed -lt $maxWait) {
+        $incidents = az rest --method GET `
+            --url "$endpoint/api/v1/incidents?status=active" `
+            --headers "Content-Type=application/json" `
+            --resource "https://azuresre.ai" 2>$null | ConvertFrom-Json
+        if ($incidents) {
+            $match = @($incidents | Where-Object {
+                $_.createdAt -gt $script:breakTime.ToString('o') -or
+                $_.title -match 'unhealthy|appgw'
+            })
+            if ($match.Count -gt 0) {
+                $inc = $match[0]
+                Write-Stage "INCIDENT AUTO-DETECTED by SRE Agent" "Green"
+                Write-Stage "  Title:  $($inc.title)" "White"
+                Write-Stage "  ID:     $($inc.id)" "DarkGray"
+                Write-Stage "  Status: $($inc.status)" "White"
+                $incidentDetected = $true
+                break
+            }
+        }
+        $min = [math]::Floor($elapsed / 60); $sec = $elapsed % 60
+        Write-Stage "No incident detected yet... (${min}m ${sec}s)" "DarkGray"
+        Start-Sleep -Seconds 15; $elapsed += 15
+    }
+    if (-not $incidentDetected) {
+        Write-Stage "Incident not auto-detected after $([math]::Floor($maxWait/60))m" "Yellow"
+        Write-Stage "Check Triggers + Response Plans in the SRE Agent portal" "Yellow"
     }
 } else {
     Write-Stage "Could not resolve SRE Agent — check it exists in $rg" "Yellow"
@@ -242,6 +254,7 @@ Write-Host "==========================================" -ForegroundColor $(if ($
 Write-Host ""
 Write-Host "  Total time:          $([math]::Floor($totalTime/60))m $($totalTime%60)s" -ForegroundColor White
 Write-Host "  Alert fired:         $(if ($alertFired) { 'Yes' } else { 'Not detected' })" -ForegroundColor White
+Write-Host "  Auto-detected:       $(if ($incidentDetected) { 'Yes' } else { 'No' })" -ForegroundColor White
 Write-Host "  Agent remediated:    $(if ($remediated) { 'Yes' } else { 'No' })" -ForegroundColor White
 Write-Host "  SQL public access:   $(Get-SqlPublicAccess)" -ForegroundColor White
 Write-Host "  Health probe:        HTTP $(Get-ProbeStatus)" -ForegroundColor White

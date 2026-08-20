@@ -12,9 +12,6 @@ param sqlAadAdminObjectId string
 @description('UPN of the deploying user (auto-set by preprovision hook)')
 param sqlAadAdminLogin string
 
-@description('SRE Agent endpoint URL for webhook-based alert routing (e.g. https://<agent>.azuresre.ai)')
-param sreAgentEndpoint string = ''
-
 var abbrs = loadJsonContent('./abbreviations.json')
 var resourceToken = toLower(uniqueString(subscription().id, environmentName, location))
 var tags = { 'azd-env-name': environmentName }
@@ -112,7 +109,6 @@ module alerts 'modules/alerts.bicep' = {
   params: {
     tags: tags
     appGatewayResourceId: appGateway.outputs.appGatewayId
-    sreAgentEndpoint: sreAgentEndpoint
   }
 }
 

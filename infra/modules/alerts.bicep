@@ -7,11 +7,8 @@ param appGatewayResourceId string
 @description('Optional email address for alert notifications')
 param notificationEmail string = ''
 
-@description('Optional SRE Agent action group ID — when provided, Azure Monitor alerts are routed to the SRE Agent as incidents')
-param sreAgentActionGroupId string = ''
-
-@description('SRE Agent endpoint URL — when provided, creates a webhook action group for the SRE Agent')
-param sreAgentEndpoint string = ''
+// NOTE: SRE Agent detects Azure Monitor alerts natively via its built-in
+// scanner (polls every ~60s). No webhook action group is needed.
 
 // ============================================================
 // Action Group (created only when an email is provided)
@@ -33,31 +30,7 @@ resource actionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = if (!empty(n
   }
 }
 
-// ============================================================
-// Action Group for SRE Agent webhook
-// ============================================================
-resource sreAgentActionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = if (!empty(sreAgentEndpoint)) {
-  name: 'ag-sre-agent'
-  location: 'global'
-  tags: tags
-  properties: {
-    groupShortName: 'SREAgent'
-    enabled: true
-    webhookReceivers: [
-      {
-        name: 'SREAgentWebhook'
-        serviceUri: '${sreAgentEndpoint}/api/v1/incidents/azmonitor'
-        useCommonAlertSchema: true
-      }
-    ]
-  }
-}
-
-var actionGroups = concat(
-  !empty(notificationEmail) ? [{ actionGroupId: actionGroup.id }] : [],
-  !empty(sreAgentActionGroupId) ? [{ actionGroupId: sreAgentActionGroupId }] : [],
-  !empty(sreAgentEndpoint) ? [{ actionGroupId: sreAgentActionGroup.id }] : []
-)
+var actionGroups = !empty(notificationEmail) ? [{ actionGroupId: actionGroup.id }] : []
 
 // ============================================================
 // Application Gateway Unhealthy Backend (Sev 1)
