@@ -6,13 +6,13 @@ Self-contained lab environment for demonstrating Azure SRE Agent capabilities. O
 
 ## Architecture
 
-| Resource                               | Purpose                                                                         |
-| -------------------------------------- | ------------------------------------------------------------------------------- |
-| **App Service (Linux/.NET 8)**         | Multi-page web app with health probe, DB-driven content                         |
-| **Application Gateway (WAF_v2)**       | OWASP 3.2 Prevention mode, public entry point, health probe polling             |
-| **Azure SQL Database**                 | Content storage (SitePages), Entra-only auth, per-IP firewall (selected networks) |
-| **Application Insights**               | Telemetry, performance monitoring, error tracking                               |
-| **Log Analytics Workspace**            | Centralized log collection, WAF firewall logs, diagnostics                      |
+| Resource                               | Purpose                                                                           |
+| -------------------------------------- | --------------------------------------------------------------------------------- |
+| **App Service (Linux/.NET 8)**   | Multi-page web app with health probe, DB-driven content                           |
+| **Application Gateway (WAF_v2)** | OWASP 3.2 Prevention mode, public entry point, health probe polling               |
+| **Azure SQL Database**           | Content storage (SitePages), Entra-only auth, per-IP firewall (selected networks) |
+| **Application Insights**         | Telemetry, performance monitoring, error tracking                                 |
+| **Log Analytics Workspace**      | Centralized log collection, WAF firewall logs, diagnostics                        |
 
 ## Demo Scenario
 
@@ -66,6 +66,7 @@ azd up
 ```
 
 The script will prompt you for:
+
 - **Environment name** (e.g., `sreagent-demo-01`)
 - **Azure subscription** (interactive list selection)
 - **Azure location** (default: `centralus`)
@@ -103,14 +104,14 @@ The `postup` hook prints the **Application Gateway public URL**.
 
 ### AZD Command Reference
 
-| Command | Purpose |
-|---|---|
-| `azd up` | Provision + deploy + postup hook (full deployment) |
-| `azd provision` | Deploy Bicep infrastructure + run postprovision hook |
-| `azd deploy` | Build & deploy src/web (.NET) only |
-| `azd down` | Delete all Azure resources |
-| `azd env get-values` | Show all env variables for current environment |
-| `azd monitor --overview` | Open Application Insights overview |
+| Command                    | Purpose                                              |
+| -------------------------- | ---------------------------------------------------- |
+| `azd up`                 | Provision + deploy + postup hook (full deployment)   |
+| `azd provision`          | Deploy Bicep infrastructure + run postprovision hook |
+| `azd deploy`             | Build & deploy src/web (.NET) only                   |
+| `azd down`               | Delete all Azure resources                           |
+| `azd env get-values`     | Show all env variables for current environment       |
+| `azd monitor --overview` | Open Application Insights overview                   |
 
 ---
 

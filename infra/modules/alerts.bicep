@@ -13,6 +13,9 @@ param notificationEmail string = ''
 @description('Optional SRE Agent action group ID — when provided, Azure Monitor alerts are routed to the SRE Agent as incidents')
 param sreAgentActionGroupId string = ''
 
+@description('SRE Agent endpoint URL — when provided, creates a webhook action group for the SRE Agent')
+param sreAgentEndpoint string = ''
+
 // ============================================================
 // Action Group (created only when an email is provided)
 // ============================================================
@@ -33,9 +36,30 @@ resource actionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = if (!empty(n
   }
 }
 
+// ============================================================
+// Action Group for SRE Agent webhook
+// ============================================================
+resource sreAgentActionGroup 'Microsoft.Insights/actionGroups@2023-01-01' = if (!empty(sreAgentEndpoint)) {
+  name: 'ag-sre-agent'
+  location: 'global'
+  tags: tags
+  properties: {
+    groupShortName: 'SREAgent'
+    enabled: true
+    webhookReceivers: [
+      {
+        name: 'SREAgentWebhook'
+        serviceUri: '${sreAgentEndpoint}/api/v1/incidents/azmonitor'
+        useCommonAlertSchema: true
+      }
+    ]
+  }
+}
+
 var actionGroups = concat(
   !empty(notificationEmail) ? [{ actionGroupId: actionGroup.id }] : [],
-  !empty(sreAgentActionGroupId) ? [{ actionGroupId: sreAgentActionGroupId }] : []
+  !empty(sreAgentActionGroupId) ? [{ actionGroupId: sreAgentActionGroupId }] : [],
+  !empty(sreAgentEndpoint) ? [{ actionGroupId: sreAgentActionGroup.id }] : []
 )
 
 // ============================================================
