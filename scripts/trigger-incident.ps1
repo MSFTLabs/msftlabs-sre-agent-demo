@@ -59,7 +59,8 @@ function Get-AlertState {
     if (-not $result -or -not $result.value) { return '' }
     $match = $result.value | Where-Object {
         $_.properties.essentials.alertRule -match $alertName -and
-        $_.properties.essentials.startDateTime -gt $script:breakTime.ToString('o')
+        $_.properties.essentials.alertState -ne 'Closed' -and
+        [datetime]$_.properties.essentials.startDateTime -gt $script:breakTime
     }
     if ($match) { return 'Fired' }
     return ''
@@ -164,36 +165,36 @@ if ($agent -and $agent.properties.agentEndpoint) {
     $endpoint = $agent.properties.agentEndpoint
     Write-Stage "Agent endpoint: $endpoint" "DarkGray"
     Write-Stage "Portal: https://sre.azure.com" "DarkGray"
-    Write-Stage "Polling for auto-detected incident (via Azure Monitor webhook)..." "Cyan"
+    Write-Stage "SRE Agent scanner polls every 60s — waiting for incident pickup..." "Cyan"
 
+    # The agent endpoint is a SPA with no public REST API.
+    # Poll the Azure Monitor alert state change to "Acknowledged" as signal the agent picked it up.
     $maxWait = 600; $elapsed = 0
     while ($elapsed -lt $maxWait) {
-        $incidents = az rest --method GET `
-            --url "$endpoint/api/v1/incidents?status=active" `
-            --headers "Content-Type=application/json" `
-            --resource "https://azuresre.ai" 2>$null | ConvertFrom-Json
-        if ($incidents) {
-            $match = @($incidents | Where-Object {
-                $_.createdAt -gt $script:breakTime.ToString('o') -or
-                $_.title -match 'unhealthy|appgw'
+        $alertsUrl = "https://management.azure.com/subscriptions/$subId/providers/Microsoft.AlertsManagement/alerts?api-version=2019-03-01&targetResourceGroup=$rg&monitorCondition=Fired"
+        $result = az rest --method GET --url $alertsUrl 2>$null | ConvertFrom-Json
+        if ($result -and $result.value) {
+            $match = @($result.value | Where-Object {
+                $_.properties.essentials.alertRule -match $alertName -and
+                $_.properties.essentials.alertState -eq 'Acknowledged' -and
+                [datetime]$_.properties.essentials.startDateTime -gt $script:breakTime
             })
             if ($match.Count -gt 0) {
-                $inc = $match[0]
                 Write-Stage "INCIDENT AUTO-DETECTED by SRE Agent" "Green"
-                Write-Stage "  Title:  $($inc.title)" "White"
-                Write-Stage "  ID:     $($inc.id)" "DarkGray"
-                Write-Stage "  Status: $($inc.status)" "White"
+                Write-Stage "  Alert:    $alertName" "White"
+                Write-Stage "  State:    Acknowledged (agent picked up)" "White"
+                Write-Stage "  Severity: $($match[0].properties.essentials.severity)" "DarkGray"
                 $incidentDetected = $true
                 break
             }
         }
         $min = [math]::Floor($elapsed / 60); $sec = $elapsed % 60
-        Write-Stage "No incident detected yet... (${min}m ${sec}s)" "DarkGray"
+        Write-Stage "Agent hasn't acknowledged alert yet... (${min}m ${sec}s)" "DarkGray"
         Start-Sleep -Seconds 15; $elapsed += 15
     }
     if (-not $incidentDetected) {
-        Write-Stage "Incident not auto-detected after $([math]::Floor($maxWait/60))m" "Yellow"
-        Write-Stage "Check Triggers + Response Plans in the SRE Agent portal" "Yellow"
+        Write-Stage "Agent did not acknowledge alert after $([math]::Floor($maxWait/60))m" "Yellow"
+        Write-Stage "Check Triggers + Response Plans at: https://sre.azure.com" "Yellow"
     }
 } else {
     Write-Stage "Could not resolve SRE Agent — check it exists in $rg" "Yellow"
