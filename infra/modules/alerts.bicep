@@ -1,6 +1,3 @@
-@description('Location for alert rules')
-param location string
-
 @description('Tags for all resources')
 param tags object
 

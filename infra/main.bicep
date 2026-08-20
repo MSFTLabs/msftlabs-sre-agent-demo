@@ -110,7 +110,6 @@ module deployerRgOwner 'modules/deployer-rg-owner.bicep' = {
 module alerts 'modules/alerts.bicep' = {
   scope: resourceGroup
   params: {
-    location: location
     tags: tags
     appGatewayResourceId: appGateway.outputs.appGatewayId
     sreAgentEndpoint: sreAgentEndpoint
